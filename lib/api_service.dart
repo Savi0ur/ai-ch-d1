@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
@@ -6,28 +7,97 @@ class ApiService {
   static const String _baseUrl = 'https://openai.api.proxyapi.ru/v1';
   static String get _apiKey => dotenv.env['API_KEY'] ?? '';
 
-  Future<String> sendMessage(String message) async {
+  http.Client? _activeClient;
+
+  /// Cancel the current streaming request.
+  void cancelStream() {
+    _activeClient?.close();
+    _activeClient = null;
+  }
+
+  /// Sends a message and returns a stream of content deltas (tokens).
+  Stream<String> sendMessageStream(
+    String message, {
+    String? systemPrompt,
+    int? maxTokens,
+    String? stopSequence,
+  }) async* {
     final url = Uri.parse('$_baseUrl/chat/completions');
 
-    final response = await http.post(
-      url,
-      headers: {
+    final messages = <Map<String, String>>[];
+    if (systemPrompt != null && systemPrompt.isNotEmpty) {
+      messages.add({'role': 'system', 'content': systemPrompt});
+    }
+    messages.add({'role': 'user', 'content': message});
+
+    final body = <String, dynamic>{
+      'model': 'openai/gpt-4o-mini',
+      'messages': messages,
+      'stream': true,
+    };
+
+    if (maxTokens != null) {
+      body['max_tokens'] = maxTokens;
+    }
+
+    if (stopSequence != null && stopSequence.isNotEmpty) {
+      body['stop'] = [stopSequence];
+    }
+
+    final client = http.Client();
+    _activeClient = client;
+
+    try {
+      final request = http.Request('POST', url);
+      request.headers.addAll({
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $_apiKey',
-      },
-      body: jsonEncode({
-        'model': 'openai/gpt-4o-mini',
-        'messages': [
-          {'role': 'user', 'content': message},
-        ],
-      }),
-    );
+      });
+      request.body = jsonEncode(body);
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['choices'][0]['message']['content'] as String;
-    } else {
-      throw Exception('Ошибка API: ${response.statusCode} ${response.body}');
+      final response = await client.send(request);
+
+      if (response.statusCode != 200) {
+        final errorBody = await response.stream.bytesToString();
+        throw Exception('API Error: ${response.statusCode} $errorBody');
+      }
+
+      // Buffer for incomplete SSE lines
+      String buffer = '';
+
+      await for (final chunk in response.stream.transform(utf8.decoder)) {
+        buffer += chunk;
+        final lines = buffer.split('\n');
+        // Keep the last potentially incomplete line in the buffer
+        buffer = lines.removeLast();
+
+        for (final line in lines) {
+          final trimmed = line.trim();
+          if (trimmed.isEmpty) continue;
+          if (!trimmed.startsWith('data: ')) continue;
+
+          final data = trimmed.substring(6);
+          if (data == '[DONE]') return;
+
+          try {
+            final json = jsonDecode(data) as Map<String, dynamic>;
+            final choices = json['choices'] as List<dynamic>?;
+            if (choices != null && choices.isNotEmpty) {
+              final delta =
+                  (choices[0] as Map<String, dynamic>)['delta'] as Map<String, dynamic>?;
+              final content = delta?['content'] as String?;
+              if (content != null) {
+                yield content;
+              }
+            }
+          } catch (_) {
+            // Skip malformed JSON chunks
+          }
+        }
+      }
+    } finally {
+      _activeClient = null;
+      client.close();
     }
   }
 }
