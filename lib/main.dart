@@ -172,10 +172,9 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(height: 16),
           TextField(
             controller: _controller,
-            maxLines: 4,
-            minLines: 1,
-            textInputAction: TextInputAction.send,
-            onSubmitted: (_) => _sendRequest(),
+            maxLines: null,
+            minLines: 3,
+            keyboardType: TextInputType.multiline,
             decoration: const InputDecoration(
               hintText: 'Your request...',
               border: OutlineInputBorder(),
