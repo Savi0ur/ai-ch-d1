@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'api_service.dart';
@@ -8,8 +9,21 @@ Future<void> main() async {
   runApp(const MainApp());
 }
 
-class MainApp extends StatelessWidget {
+class MainApp extends StatefulWidget {
   const MainApp({super.key});
+
+  @override
+  State<MainApp> createState() => _MainAppState();
+}
+
+class _MainAppState extends State<MainApp> {
+  bool _isDark = false;
+
+  void _toggleTheme() {
+    setState(() {
+      _isDark = !_isDark;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,13 +35,29 @@ class MainApp extends StatelessWidget {
         useMaterial3: true,
         brightness: Brightness.light,
       ),
-      home: const ChatScreen(),
+      darkTheme: ThemeData(
+        colorSchemeSeed: Colors.deepPurple,
+        useMaterial3: true,
+        brightness: Brightness.dark,
+      ),
+      themeMode: _isDark ? ThemeMode.dark : ThemeMode.light,
+      home: ChatScreen(
+        isDark: _isDark,
+        onToggleTheme: _toggleTheme,
+      ),
     );
   }
 }
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  final bool isDark;
+  final VoidCallback onToggleTheme;
+
+  const ChatScreen({
+    super.key,
+    required this.isDark,
+    required this.onToggleTheme,
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -43,6 +73,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _systemPromptController = TextEditingController();
   final _maxTokensController = TextEditingController(text: '1024');
   final _stopSequenceController = TextEditingController();
+  double _temperature = 0.7;
 
   bool _isStreaming = false;
   String _result = '';
@@ -69,6 +100,7 @@ class _ChatScreenState extends State<ChatScreen> {
             : null,
         stopSequence:
             _settingsEnabled ? _stopSequenceController.text.trim() : null,
+        temperature: _settingsEnabled ? _temperature : null,
       );
 
       _streamSubscription = stream.listen(
@@ -122,7 +154,6 @@ class _ChatScreenState extends State<ChatScreen> {
   void _reset() {
     _cancelStream();
     setState(() {
-      _controller.clear();
       _result = '';
       _error = null;
     });
@@ -145,14 +176,32 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: _hasResponse ? _buildResult() : _buildInput(),
-            ),
-          ),
+        child: Stack(
+          children: [
+            _hasResponse
+                ? _buildResultScreen()
+                : Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 600),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: _buildInput(),
+                  ),
+                ),
+              ),
+            if (!_hasResponse)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton(
+                  onPressed: widget.onToggleTheme,
+                  icon: Icon(
+                    widget.isDark ? Icons.light_mode : Icons.dark_mode,
+                  ),
+                  tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -248,6 +297,26 @@ class _ChatScreenState extends State<ChatScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Text('Temperature: ${_temperature.toStringAsFixed(1)}'),
+                  Expanded(
+                    child: Slider(
+                      value: _temperature,
+                      min: 0.0,
+                      max: 2.0,
+                      divisions: 20,
+                      label: _temperature.toStringAsFixed(1),
+                      onChanged: (value) {
+                        setState(() {
+                          _temperature = value;
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ],
           ],
         ),
@@ -255,72 +324,172 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildResult() {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            if (_isStreaming)
-              TextButton.icon(
-                onPressed: _cancelStream,
-                icon: const Icon(Icons.stop, size: 18),
-                label: const Text('Stop'),
+  Widget _buildResultScreen() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (_isStreaming)
+                TextButton.icon(
+                  onPressed: _cancelStream,
+                  icon: const Icon(Icons.stop, size: 18),
+                  label: const Text('Stop'),
+                ),
+              IconButton(
+                onPressed: _reset,
+                icon: const Icon(Icons.close),
+                tooltip: 'Close',
               ),
-            IconButton(
-              onPressed: _reset,
-              icon: const Icon(Icons.close),
-              tooltip: 'Close',
+              IconButton(
+                onPressed: widget.onToggleTheme,
+                icon: Icon(
+                  widget.isDark ? Icons.light_mode : Icons.dark_mode,
+                ),
+                tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
+              ),
+            ],
+          ),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _buildResponsePanel()),
+                const SizedBox(width: 16),
+                Expanded(child: _buildRequestLogPanel()),
+              ],
             ),
-          ],
-        ),
-        Expanded(
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            child: SizedBox(
-              width: double.infinity,
-              child: _error != null
-                  ? Card(
-                      color: Theme.of(context).colorScheme.errorContainer,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: SelectableText(
-                          _error!,
-                          style: TextStyle(
-                            color:
-                                Theme.of(context).colorScheme.onErrorContainer,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResponsePanel() {
+    return SingleChildScrollView(
+      controller: _scrollController,
+      child: SizedBox(
+        width: double.infinity,
+        child: _error != null
+            ? Card(
+                color: Theme.of(context).colorScheme.errorContainer,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SelectableText(
+                    _error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                    ),
+                  ),
+                ),
+              )
+            : Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SelectableText(
+                        _result,
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                      if (_isStreaming) ...[
+                        const SizedBox(height: 8),
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
                           ),
                         ),
-                      ),
-                    )
-                  : Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SelectableText(
-                              _result,
-                              style: Theme.of(context).textTheme.bodyLarge,
-                            ),
-                            if (_isStreaming) ...[
-                              const SizedBox(height: 8),
-                              const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildRequestLogPanel() {
+    final log = _apiService.lastRequestLog;
+    if (log == null) return const SizedBox.shrink();
+
+    const encoder = JsonEncoder.withIndent('  ');
+    final headersText = encoder.convert(log.maskedHeaders);
+    final bodyText = encoder.convert(log.body);
+
+    return SingleChildScrollView(
+      child: SizedBox(
+        width: double.infinity,
+        child: Card(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Request Log',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                _logSection('Method', log.method),
+                _logSection('URL', log.url),
+                _logBlock('Headers', headersText),
+                _logBlock('Body', bodyText),
+              ],
             ),
           ),
         ),
-      ],
+      ),
+    );
+  }
+
+  Widget _logSection(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SelectableText.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '$label: ',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            TextSpan(text: value),
+          ],
+        ),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+            ),
+      ),
+    );
+  }
+
+  Widget _logBlock(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label:',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'monospace',
+                ),
+          ),
+          const SizedBox(height: 4),
+          SelectableText(
+            value,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontFamily: 'monospace',
+                ),
+          ),
+        ],
+      ),
     );
   }
 }

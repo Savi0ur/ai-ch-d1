@@ -3,11 +3,35 @@ import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
+class RequestLog {
+  final String method;
+  final String url;
+  final Map<String, String> headers;
+  final Map<String, dynamic> body;
+
+  const RequestLog({
+    required this.method,
+    required this.url,
+    required this.headers,
+    required this.body,
+  });
+
+  Map<String, String> get maskedHeaders {
+    return headers.map((key, value) {
+      if (key.toLowerCase() == 'authorization') {
+        return MapEntry(key, 'Bearer ${'*' * 16}');
+      }
+      return MapEntry(key, value);
+    });
+  }
+}
+
 class ApiService {
   static const String _baseUrl = 'https://openai.api.proxyapi.ru/v1';
   static String get _apiKey => dotenv.env['API_KEY'] ?? '';
 
   http.Client? _activeClient;
+  RequestLog? lastRequestLog;
 
   /// Cancel the current streaming request.
   void cancelStream() {
@@ -21,6 +45,7 @@ class ApiService {
     String? systemPrompt,
     int? maxTokens,
     String? stopSequence,
+    double? temperature,
   }) async* {
     final url = Uri.parse('$_baseUrl/chat/completions');
 
@@ -44,15 +69,28 @@ class ApiService {
       body['stop'] = [stopSequence];
     }
 
+    if (temperature != null) {
+      body['temperature'] = temperature;
+    }
+
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $_apiKey',
+    };
+
+    lastRequestLog = RequestLog(
+      method: 'POST',
+      url: url.toString(),
+      headers: headers,
+      body: body,
+    );
+
     final client = http.Client();
     _activeClient = client;
 
     try {
       final request = http.Request('POST', url);
-      request.headers.addAll({
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_apiKey',
-      });
+      request.headers.addAll(headers);
       request.body = jsonEncode(body);
 
       final response = await client.send(request);
