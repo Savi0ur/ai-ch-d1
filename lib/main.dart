@@ -28,7 +28,7 @@ class _MainAppState extends State<MainApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'gpt 4o mini',
+      title: 'AI Chat',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorSchemeSeed: Colors.deepPurple,
@@ -68,6 +68,27 @@ class _ChatScreenState extends State<ChatScreen> {
   final _apiService = ApiService();
   final _scrollController = ScrollController();
 
+  // Model selection
+  static const _models = <String, String>{
+    'openai/gpt-5.2': 'GPT-5.2',
+    'openai/gpt-5.1': 'GPT-5.1',
+    'openai/gpt-4.1': 'GPT-4.1',
+    'openai/o3': 'o3',
+    'openai/gpt-4o-mini': 'GPT-4o Mini',
+  };
+  String _selectedModel = 'openai/gpt-4o-mini';
+
+  // Pricing per 1M tokens: (input, output)
+  static const _pricing = <String, (double, double)>{
+    'openai/gpt-5.2': (2.50, 10.00),
+    'openai/gpt-5.1': (2.00, 8.00),
+    'openai/gpt-4.1': (2.00, 8.00),
+    'openai/o3': (10.00, 40.00),
+    'openai/gpt-4o-mini': (0.15, 0.60),
+  };
+
+  final _stopwatch = Stopwatch();
+
   // Request Settings
   bool _settingsEnabled = false;
   final _systemPromptController = TextEditingController();
@@ -90,9 +111,13 @@ class _ChatScreenState extends State<ChatScreen> {
       _error = null;
     });
 
+    _stopwatch.reset();
+    _stopwatch.start();
+
     try {
       final stream = _apiService.sendMessageStream(
         text,
+        model: _selectedModel,
         systemPrompt:
             _settingsEnabled ? _systemPromptController.text.trim() : null,
         maxTokens: _settingsEnabled
@@ -111,18 +136,21 @@ class _ChatScreenState extends State<ChatScreen> {
           _scrollToBottom();
         },
         onError: (error) {
+          _stopwatch.stop();
           setState(() {
             _error = error.toString();
             _isStreaming = false;
           });
         },
         onDone: () {
+          _stopwatch.stop();
           setState(() {
             _isStreaming = false;
           });
         },
       );
     } catch (e) {
+      _stopwatch.stop();
       setState(() {
         _error = e.toString();
         _isStreaming = false;
@@ -212,9 +240,28 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            'gpt 4o mini',
-            style: Theme.of(context).textTheme.headlineMedium,
+          DropdownButtonFormField<String>(
+            initialValue: _selectedModel,
+            decoration: InputDecoration(
+              labelText: 'Model',
+              prefixIcon: const Icon(Icons.smart_toy_outlined),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              filled: true,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            items: _models.entries
+                .map((e) => DropdownMenuItem(
+                      value: e.key,
+                      child: Text(e.value),
+                    ))
+                .toList(),
+            onChanged: (value) {
+              if (value != null) {
+                setState(() => _selectedModel = value);
+              }
+            },
           ),
           const SizedBox(height: 24),
           _buildRequestSettings(),
@@ -440,11 +487,54 @@ class _ChatScreenState extends State<ChatScreen> {
                 _logSection('URL', log.url),
                 _logBlock('Headers', headersText),
                 _logBlock('Body', bodyText),
+                const Divider(height: 24),
+                Text(
+                  'Response Info',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                _buildResponseInfo(),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildResponseInfo() {
+    final elapsed = _stopwatch.elapsed;
+    final timeStr = _isStreaming
+        ? 'streaming...'
+        : '${(elapsed.inMilliseconds / 1000).toStringAsFixed(2)}s';
+
+    final resLog = _apiService.lastResponseLog;
+
+    if (resLog == null && !_isStreaming) {
+      return _logSection('Time', timeStr);
+    }
+
+    final prompt = resLog?.promptTokens ?? 0;
+    final completion = resLog?.completionTokens ?? 0;
+    final total = resLog?.totalTokens ?? 0;
+
+    final prices = _pricing[_selectedModel];
+    String costStr = '-';
+    if (resLog != null && prices != null) {
+      final cost =
+          (prompt * prices.$1 + completion * prices.$2) / 1000000;
+      costStr = '\$${cost.toStringAsFixed(6)}';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _logSection('Time', timeStr),
+        _logSection('Prompt tokens', '$prompt'),
+        _logSection('Completion tokens', '$completion'),
+        _logSection('Total tokens', '$total'),
+        _logSection('Est. cost', costStr),
+      ],
     );
   }
 

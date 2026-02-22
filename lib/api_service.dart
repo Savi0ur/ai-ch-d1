@@ -3,6 +3,18 @@ import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
+class ResponseLog {
+  final int promptTokens;
+  final int completionTokens;
+  final int totalTokens;
+
+  const ResponseLog({
+    required this.promptTokens,
+    required this.completionTokens,
+    required this.totalTokens,
+  });
+}
+
 class RequestLog {
   final String method;
   final String url;
@@ -32,6 +44,7 @@ class ApiService {
 
   http.Client? _activeClient;
   RequestLog? lastRequestLog;
+  ResponseLog? lastResponseLog;
 
   /// Cancel the current streaming request.
   void cancelStream() {
@@ -42,6 +55,7 @@ class ApiService {
   /// Sends a message and returns a stream of content deltas (tokens).
   Stream<String> sendMessageStream(
     String message, {
+    required String model,
     String? systemPrompt,
     int? maxTokens,
     String? stopSequence,
@@ -56,9 +70,10 @@ class ApiService {
     messages.add({'role': 'user', 'content': message});
 
     final body = <String, dynamic>{
-      'model': 'openai/gpt-4o-mini',
+      'model': model,
       'messages': messages,
       'stream': true,
+      'stream_options': {'include_usage': true},
     };
 
     if (maxTokens != null) {
@@ -84,6 +99,7 @@ class ApiService {
       headers: headers,
       body: body,
     );
+    lastResponseLog = null;
 
     final client = http.Client();
     _activeClient = client;
@@ -119,6 +135,14 @@ class ApiService {
 
           try {
             final json = jsonDecode(data) as Map<String, dynamic>;
+            final usage = json['usage'] as Map<String, dynamic>?;
+            if (usage != null) {
+              lastResponseLog = ResponseLog(
+                promptTokens: usage['prompt_tokens'] as int? ?? 0,
+                completionTokens: usage['completion_tokens'] as int? ?? 0,
+                totalTokens: usage['total_tokens'] as int? ?? 0,
+              );
+            }
             final choices = json['choices'] as List<dynamic>?;
             if (choices != null && choices.isNotEmpty) {
               final delta =
