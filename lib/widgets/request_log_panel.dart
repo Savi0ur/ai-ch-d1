@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../models/model_config.dart';
 import '../services/api_service.dart';
 
 class RequestLogPanel extends StatelessWidget {
@@ -7,15 +8,6 @@ class RequestLogPanel extends StatelessWidget {
   final Stopwatch stopwatch;
   final bool isStreaming;
   final String selectedModel;
-
-  // Pricing per 1M tokens: (input, output)
-  static const _pricing = <String, (double, double)>{
-    'openai/gpt-5.2': (2.50, 10.00),
-    'openai/gpt-5.1': (2.00, 8.00),
-    'openai/gpt-4.1': (2.00, 8.00),
-    'openai/o3': (10.00, 40.00),
-    'openai/gpt-4o-mini': (0.15, 0.60),
-  };
 
   const RequestLogPanel({
     super.key,
@@ -84,7 +76,7 @@ class RequestLogPanel extends StatelessWidget {
     final completion = resLog?.completionTokens ?? 0;
     final total = resLog?.totalTokens ?? 0;
 
-    final prices = _pricing[selectedModel];
+    final prices = ModelConfig.getPricing(selectedModel);
     String costStr = '-';
     if (resLog != null && prices != null) {
       final cost =

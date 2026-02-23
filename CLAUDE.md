@@ -1,68 +1,70 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Язык общения
+## Язык
 
 Общение по проекту ведётся на русском языке.
 
-## Project Overview
+## Обзор
 
-Flutter chat app with multi-turn conversations and chat history. Streams responses from an OpenAI-compatible API via a proxy at `openai.api.proxyapi.ru`. Supports multiple simultaneous chats with persistent storage via Hive.
+Flutter-приложение для чата с LLM. Поддерживает многооборотные диалоги с сохранением истории (Hive). Стриминг ответов через SSE от OpenAI-совместимого API (прокси `openai.api.proxyapi.ru`).
 
-## Build & Run Commands
+## Команды
 
 ```bash
-flutter pub get          # Install dependencies
-flutter run              # Run on connected device/emulator
-flutter run -d windows   # Run on Windows desktop
-flutter run -d chrome    # Run on web
-flutter build apk        # Build Android APK
-flutter analyze          # Run static analysis (uses flutter_lints)
-flutter test             # Run tests
+flutter pub get          # Установка зависимостей
+flutter analyze          # Статический анализ (flutter_lints)
+flutter test             # Тесты
+flutter run -d windows   # Запуск Windows
+flutter run -d chrome    # Запуск Web
+flutter build apk        # Сборка Android APK
 ```
 
-## Architecture
+## Структура
 
 ```
 lib/
-  main.dart                       # Entry point, Hive init, theme management
+  main.dart                       # Точка входа, Hive init, тема (светлая/тёмная)
   models/
-    chat.dart                     # Chat & ChatMessage models + Hive TypeAdapters
+    chat.dart                     # Chat, ChatMessage + ручные Hive TypeAdapters
+    model_config.dart             # Единая конфигурация моделей (id, label, pricing)
   services/
-    api_service.dart              # Streaming API client (SSE parsing, cancellation)
-    chat_repository.dart          # CRUD for chats and messages via Hive
+    api_service.dart              # SSE-стриминг к /v1/chat/completions
+    chat_repository.dart          # CRUD чатов и сообщений (Hive)
   screens/
-    chat_screen.dart              # Main chat screen (message list, input, drawer)
+    chat_controller.dart          # ChatController (ChangeNotifier) — состояние и бизнес-логика
+    chat_screen.dart              # Главный экран: UI, подписка через ListenableBuilder
   widgets/
-    chat_drawer.dart              # Sidebar/drawer with chat history list
-    message_bubble.dart           # Individual message bubble (user/assistant)
-    chat_input.dart               # Text input + send/stop button
-    request_log_panel.dart        # Request/response log panel
+    chat_drawer.dart              # Боковая панель / drawer с историей чатов
+    message_bubble.dart           # Пузырёк сообщения (user/assistant)
+    chat_input.dart               # Поле ввода + кнопка send/stop
+    request_log_panel.dart        # Лог запроса и информация об ответе
 ```
 
-- **`main.dart`** — App entry point. Initializes Hive, loads `.env`, creates `ChatRepository`, manages theme toggle.
-- **`models/chat.dart`** — `Chat` and `ChatMessage` Hive models with hand-written TypeAdapters.
-- **`services/api_service.dart`** — `ApiService` class. Sends streaming POST to `/v1/chat/completions`. Accepts `List<ChatMessage>` for multi-turn context. Parses SSE chunks. Supports cancellation.
-- **`services/chat_repository.dart`** — `ChatRepository`. CRUD operations for chats and messages. Auto-generates chat titles from first message.
-- **`screens/chat_screen.dart`** — Main UI. Message list with bubbles, chat input, adaptive sidebar (wide screens) or drawer (narrow). Settings and request log via bottom sheets.
-- **`widgets/`** — Reusable UI components: `ChatDrawer`, `MessageBubble`, `ChatInput`, `RequestLogPanel`.
+## Ключевые решения
 
-## Configuration
+- **Hive** для хранения (не SQLite) — работает на всех платформах включая Web, без нативных зависимостей
+- **Ручные TypeAdapters** вместо кодогенерации — нет dev-зависимостей на build_runner/hive_generator
+- **Адаптивный layout** — sidebar на экранах >900px, drawer на узких
+- **SSE-парсинг вручную** — без сторонних SSE-библиотек, буферизация неполных строк в `ApiService`
 
-- API key is stored in `.env` file (root directory) as `API_KEY=...`, loaded via `flutter_dotenv`
-- `.env` is bundled as a Flutter asset (declared in `pubspec.yaml`) and gitignored
-- API base URL is hardcoded in `ApiService._baseUrl`
-- Default model: `openai/gpt-4o-mini`, selectable from dropdown
+## Конфигурация
 
-## Key Dependencies
+- API ключ: `.env` файл в корне (`API_KEY=...`), загружается через `flutter_dotenv`, включён в assets
+- Base URL: захардкожен в `ApiService._baseUrl`
+- Модели: единый список в `ModelConfig.all` (`lib/models/model_config.dart`)
+- Hive боксы: `chats`, `messages`, `settings`
+- Тема (dark/light): сохраняется в Hive `settings` бокс
 
-- `flutter_dotenv` — Environment variable loading
-- `http` — HTTP client for streaming API requests
-- `hive` / `hive_flutter` — Lightweight NoSQL DB for chat persistence
-- `uuid` — Unique ID generation for chats and messages
-- `path_provider` — File system paths for Hive storage
+## Зависимости
 
-## Target Platforms
+| Пакет | Назначение |
+|---|---|
+| `flutter_dotenv` | Загрузка .env |
+| `http` | HTTP-клиент для стриминга |
+| `hive` / `hive_flutter` | NoSQL хранилище |
+| `uuid` | Генерация ID чатов и сообщений |
+| `path_provider` | Пути файловой системы для Hive |
 
-Android, Windows, Web (platform runners exist in project)
+## Платформы
+
+Android, Windows, Web

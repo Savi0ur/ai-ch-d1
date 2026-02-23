@@ -1,12 +1,12 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/chat.dart';
-import '../services/api_service.dart';
+import '../models/model_config.dart';
 import '../services/chat_repository.dart';
 import '../widgets/chat_drawer.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/request_log_panel.dart';
+import 'chat_controller.dart';
 
 class ChatScreen extends StatefulWidget {
   final ChatRepository repository;
@@ -25,180 +25,65 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final _controller = TextEditingController();
-  final _apiService = ApiService();
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  final _inputController = TextEditingController();
   final _scrollController = ScrollController();
-  final _stopwatch = Stopwatch();
-
-  // Model selection
-  static const _models = <String, String>{
-    'openai/gpt-5.2': 'GPT-5.2',
-    'openai/gpt-5.1': 'GPT-5.1',
-    'openai/gpt-4.1': 'GPT-4.1',
-    'openai/o3': 'o3',
-    'openai/gpt-4o-mini': 'GPT-4o Mini',
-  };
-  String _selectedModel = 'openai/gpt-4o-mini';
-
-  // Request Settings
-  bool _settingsEnabled = false;
-  final _systemPromptController = TextEditingController();
-  final _maxTokensController = TextEditingController(text: '1024');
-  final _stopSequenceController = TextEditingController();
-  double _temperature = 0.7;
-
-  // Chat state
-  Chat? _activeChat;
-  List<ChatMessage> _messages = [];
-  List<Chat> _chats = [];
-  bool _isStreaming = false;
-  String _streamingContent = '';
-  String? _error;
-  StreamSubscription<String>? _streamSubscription;
+  late final ChatController _ctrl;
 
   @override
   void initState() {
     super.initState();
-    _loadChats();
+    _ctrl = ChatController(repository: widget.repository);
   }
 
-  void _loadChats() {
-    setState(() {
-      _chats = widget.repository.getChats();
-    });
-  }
-
-  void _createNewChat() {
-    setState(() {
-      _activeChat = null;
-      _messages = [];
-      _streamingContent = '';
-      _error = null;
-    });
-    // Close drawer on mobile
-    if (Navigator.of(context).canPop()) {
+  void _closeDrawerIfOpen() {
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
       Navigator.of(context).pop();
     }
   }
 
-  void _selectChat(Chat chat) {
-    setState(() {
-      _activeChat = chat;
-      _messages = widget.repository.getMessages(chat.id);
-      _selectedModel = chat.model;
-      if (chat.systemPrompt != null && chat.systemPrompt!.isNotEmpty) {
-        _systemPromptController.text = chat.systemPrompt!;
-        _settingsEnabled = true;
-      }
-      _streamingContent = '';
-      _error = null;
-    });
-    // Close drawer on mobile
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
+  void _onCreateNewChat() {
+    _ctrl.createNewChat();
+    _closeDrawerIfOpen();
   }
 
-  void _deleteChat(Chat chat) {
-    widget.repository.deleteChat(chat.id);
-    if (_activeChat?.id == chat.id) {
-      _activeChat = null;
-      _messages = [];
-    }
-    _loadChats();
+  void _onSelectChat(Chat chat) {
+    _ctrl.selectChat(chat);
+    _closeDrawerIfOpen();
   }
 
-  Future<void> _sendMessage() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty || _isStreaming) return;
-
-    // Create chat if needed
-    if (_activeChat == null) {
-      final systemPrompt = _settingsEnabled
-          ? _systemPromptController.text.trim()
-          : null;
-      _activeChat = widget.repository.createChat(
-        model: _selectedModel,
-        systemPrompt: systemPrompt,
-      );
-    }
-
-    // Save user message
-    final userMsg = widget.repository.addMessage(
-      chatId: _activeChat!.id,
-      role: 'user',
-      content: text,
+  Future<void> _onDeleteChat(Chat chat) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить чат?'),
+        content: Text('Чат "${chat.title}" будет удалён без возможности восстановления.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
     );
+    if (confirmed != true) return;
+    _ctrl.deleteChat(chat.id);
+  }
 
-    setState(() {
-      _messages.add(userMsg);
-      _isStreaming = true;
-      _streamingContent = '';
-      _error = null;
-    });
-
-    _controller.clear();
+  void _onSend() {
+    final text = _inputController.text.trim();
+    if (text.isEmpty) return;
+    _inputController.clear();
+    _ctrl.sendMessage(text);
     _scrollToBottom();
+  }
 
-    _stopwatch.reset();
-    _stopwatch.start();
-
-    try {
-      final stream = _apiService.sendMessageStream(
-        _messages,
-        model: _selectedModel,
-        systemPrompt: _settingsEnabled
-            ? _systemPromptController.text.trim()
-            : _activeChat!.systemPrompt,
-        maxTokens: _settingsEnabled
-            ? int.tryParse(_maxTokensController.text.trim())
-            : null,
-        stopSequence: _settingsEnabled
-            ? _stopSequenceController.text.trim()
-            : null,
-        temperature: _settingsEnabled ? _temperature : null,
-      );
-
-      _streamSubscription = stream.listen(
-        (delta) {
-          setState(() {
-            _streamingContent += delta;
-          });
-          _scrollToBottom();
-        },
-        onError: (error) {
-          _stopwatch.stop();
-          setState(() {
-            _error = error.toString();
-            _isStreaming = false;
-          });
-        },
-        onDone: () {
-          _stopwatch.stop();
-          if (_streamingContent.isNotEmpty) {
-            final assistantMsg = widget.repository.addMessage(
-              chatId: _activeChat!.id,
-              role: 'assistant',
-              content: _streamingContent,
-            );
-            setState(() {
-              _messages.add(assistantMsg);
-              _streamingContent = '';
-            });
-          }
-          setState(() {
-            _isStreaming = false;
-          });
-          _loadChats();
-        },
-      );
-    } catch (e) {
-      _stopwatch.stop();
-      setState(() {
-        _error = e.toString();
-        _isStreaming = false;
-      });
-    }
+  void _onCancel() {
+    _ctrl.cancelStream();
   }
 
   void _scrollToBottom() {
@@ -213,27 +98,6 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _cancelStream() {
-    _streamSubscription?.cancel();
-    _streamSubscription = null;
-    _apiService.cancelStream();
-    if (_streamingContent.isNotEmpty) {
-      final assistantMsg = widget.repository.addMessage(
-        chatId: _activeChat!.id,
-        role: 'assistant',
-        content: _streamingContent,
-      );
-      setState(() {
-        _messages.add(assistantMsg);
-        _streamingContent = '';
-      });
-    }
-    setState(() {
-      _isStreaming = false;
-    });
-    _loadChats();
-  }
-
   void _showRequestLog() {
     showModalBottomSheet(
       context: context,
@@ -246,10 +110,10 @@ class _ChatScreenState extends State<ChatScreen> {
         builder: (context, scrollController) => Padding(
           padding: const EdgeInsets.all(16),
           child: RequestLogPanel(
-            apiService: _apiService,
-            stopwatch: _stopwatch,
-            isStreaming: _isStreaming,
-            selectedModel: _selectedModel,
+            apiService: _ctrl.apiService,
+            stopwatch: _ctrl.stopwatch,
+            isStreaming: _ctrl.isStreaming,
+            selectedModel: _ctrl.selectedModel,
           ),
         ),
       ),
@@ -276,7 +140,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 Text('Настройки', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  initialValue: _selectedModel,
+                  initialValue: _ctrl.selectedModel,
                   decoration: InputDecoration(
                     labelText: 'Модель',
                     prefixIcon: const Icon(Icons.smart_toy_outlined),
@@ -286,7 +150,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     filled: true,
                   ),
                   borderRadius: BorderRadius.circular(12),
-                  items: _models.entries
+                  items: ModelConfig.dropdownItems.entries
                       .map((e) => DropdownMenuItem(
                             value: e.key,
                             child: Text(e.value),
@@ -294,7 +158,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       .toList(),
                   onChanged: (value) {
                     if (value != null) {
-                      setState(() => _selectedModel = value);
+                      _ctrl.selectedModel = value;
                       setSheetState(() {});
                     }
                   },
@@ -306,18 +170,18 @@ class _ChatScreenState extends State<ChatScreen> {
                         style: Theme.of(context).textTheme.titleMedium),
                     const Spacer(),
                     Switch(
-                      value: _settingsEnabled,
+                      value: _ctrl.settingsEnabled,
                       onChanged: (value) {
-                        setState(() => _settingsEnabled = value);
+                        _ctrl.settingsEnabled = value;
                         setSheetState(() {});
                       },
                     ),
                   ],
                 ),
-                if (_settingsEnabled) ...[
+                if (_ctrl.settingsEnabled) ...[
                   const SizedBox(height: 12),
                   TextField(
-                    controller: _systemPromptController,
+                    controller: _ctrl.systemPromptController,
                     maxLines: 3,
                     minLines: 1,
                     decoration: const InputDecoration(
@@ -328,7 +192,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   const SizedBox(height: 12),
                   TextField(
-                    controller: _maxTokensController,
+                    controller: _ctrl.maxTokensController,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
                       labelText: 'Max Tokens',
@@ -337,7 +201,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   const SizedBox(height: 12),
                   TextField(
-                    controller: _stopSequenceController,
+                    controller: _ctrl.stopSequenceController,
                     decoration: const InputDecoration(
                       labelText: 'Stop Sequence',
                       hintText: 'Введите стоп-последовательность...',
@@ -347,16 +211,16 @@ class _ChatScreenState extends State<ChatScreen> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Text('Temperature: ${_temperature.toStringAsFixed(1)}'),
+                      Text('Temperature: ${_ctrl.temperature.toStringAsFixed(1)}'),
                       Expanded(
                         child: Slider(
-                          value: _temperature,
+                          value: _ctrl.temperature,
                           min: 0.0,
                           max: 2.0,
                           divisions: 20,
-                          label: _temperature.toStringAsFixed(1),
+                          label: _ctrl.temperature.toStringAsFixed(1),
                           onChanged: (value) {
-                            setState(() => _temperature = value);
+                            _ctrl.temperature = value;
                             setSheetState(() {});
                           },
                         ),
@@ -375,11 +239,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    _streamSubscription?.cancel();
-    _controller.dispose();
-    _systemPromptController.dispose();
-    _maxTokensController.dispose();
-    _stopSequenceController.dispose();
+    _ctrl.dispose();
+    _inputController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -388,93 +249,103 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width > 900;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _activeChat?.title ?? 'AI Chat',
-          overflow: TextOverflow.ellipsis,
-        ),
-        leading: isWide
-            ? null
-            : Builder(
-                builder: (context) => IconButton(
-                  icon: const Icon(Icons.menu),
-                  onPressed: () => Scaffold.of(context).openDrawer(),
-                  tooltip: 'Чаты',
+    return ListenableBuilder(
+      listenable: _ctrl,
+      builder: (context, _) {
+        // Auto-scroll when streaming content updates
+        if (_ctrl.isStreaming && _ctrl.streamingContent.isNotEmpty) {
+          _scrollToBottom();
+        }
+
+        return Scaffold(
+          key: _scaffoldKey,
+          appBar: AppBar(
+            title: Text(
+              _ctrl.activeChat?.title ?? 'AI Chat',
+              overflow: TextOverflow.ellipsis,
+            ),
+            leading: isWide
+                ? null
+                : Builder(
+                    builder: (context) => IconButton(
+                      icon: const Icon(Icons.menu),
+                      onPressed: () => Scaffold.of(context).openDrawer(),
+                      tooltip: 'Чаты',
+                    ),
+                  ),
+            actions: [
+              IconButton(
+                onPressed: _onCreateNewChat,
+                icon: const Icon(Icons.add),
+                tooltip: 'Новый чат',
+              ),
+              IconButton(
+                onPressed: _showSettings,
+                icon: const Icon(Icons.tune),
+                tooltip: 'Настройки',
+              ),
+              if (_ctrl.apiService.lastRequestLog != null)
+                IconButton(
+                  onPressed: _showRequestLog,
+                  icon: const Icon(Icons.receipt_long),
+                  tooltip: 'Лог запроса',
+                ),
+              IconButton(
+                onPressed: widget.onToggleTheme,
+                icon: Icon(
+                  widget.isDark ? Icons.light_mode : Icons.dark_mode,
+                ),
+                tooltip: widget.isDark ? 'Светлая тема' : 'Тёмная тема',
+              ),
+            ],
+          ),
+          drawer: isWide
+              ? null
+              : Drawer(
+                  child: ChatDrawer(
+                    chats: _ctrl.chats,
+                    activeChatId: _ctrl.activeChat?.id,
+                    onNewChat: _onCreateNewChat,
+                    onSelectChat: _onSelectChat,
+                    onDeleteChat: _onDeleteChat,
+                  ),
+                ),
+          body: Row(
+            children: [
+              if (isWide)
+                ChatDrawer(
+                  chats: _ctrl.chats,
+                  activeChatId: _ctrl.activeChat?.id,
+                  onNewChat: _onCreateNewChat,
+                  onSelectChat: _onSelectChat,
+                  onDeleteChat: _onDeleteChat,
+                ),
+              if (isWide)
+                const VerticalDivider(width: 1),
+              Expanded(
+                child: Column(
+                  children: [
+                    Expanded(child: _buildMessageList()),
+                    if (_ctrl.error != null) _buildErrorBanner(),
+                    ChatInput(
+                      controller: _inputController,
+                      isStreaming: _ctrl.isStreaming,
+                      onSend: _onSend,
+                      onCancel: _onCancel,
+                    ),
+                  ],
                 ),
               ),
-        actions: [
-          IconButton(
-            onPressed: _createNewChat,
-            icon: const Icon(Icons.add),
-            tooltip: 'Новый чат',
+            ],
           ),
-          IconButton(
-            onPressed: _showSettings,
-            icon: const Icon(Icons.tune),
-            tooltip: 'Настройки',
-          ),
-          if (_apiService.lastRequestLog != null)
-            IconButton(
-              onPressed: _showRequestLog,
-              icon: const Icon(Icons.receipt_long),
-              tooltip: 'Лог запроса',
-            ),
-          IconButton(
-            onPressed: widget.onToggleTheme,
-            icon: Icon(
-              widget.isDark ? Icons.light_mode : Icons.dark_mode,
-            ),
-            tooltip: widget.isDark ? 'Светлая тема' : 'Тёмная тема',
-          ),
-        ],
-      ),
-      drawer: isWide
-          ? null
-          : Drawer(
-              child: ChatDrawer(
-                chats: _chats,
-                activeChatId: _activeChat?.id,
-                onNewChat: _createNewChat,
-                onSelectChat: _selectChat,
-                onDeleteChat: _deleteChat,
-              ),
-            ),
-      body: Row(
-        children: [
-          if (isWide)
-            ChatDrawer(
-              chats: _chats,
-              activeChatId: _activeChat?.id,
-              onNewChat: _createNewChat,
-              onSelectChat: _selectChat,
-              onDeleteChat: _deleteChat,
-            ),
-          if (isWide)
-            const VerticalDivider(width: 1),
-          Expanded(
-            child: Column(
-              children: [
-                Expanded(child: _buildMessageList()),
-                if (_error != null) _buildErrorBanner(),
-                ChatInput(
-                  controller: _controller,
-                  isStreaming: _isStreaming,
-                  onSend: _sendMessage,
-                  onCancel: _cancelStream,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   Widget _buildMessageList() {
-    final allMessages = [..._messages];
-    // Add a temporary streaming message
-    final hasStreaming = _isStreaming && _streamingContent.isNotEmpty;
+    final allMessages = [..._ctrl.messages];
+    final hasStreaming = _ctrl.isStreaming && _ctrl.streamingContent.isNotEmpty;
 
     if (allMessages.isEmpty && !hasStreaming) {
       return Center(
@@ -506,13 +377,12 @@ class _ChatScreenState extends State<ChatScreen> {
         if (index < allMessages.length) {
           return MessageBubble(message: allMessages[index]);
         }
-        // Streaming message
         return MessageBubble(
           message: ChatMessage(
             id: 'streaming',
-            chatId: _activeChat?.id ?? '',
+            chatId: _ctrl.activeChat?.id ?? '',
             role: 'assistant',
-            content: _streamingContent,
+            content: _ctrl.streamingContent,
             timestamp: DateTime.now(),
           ),
           isStreaming: true,
@@ -533,7 +403,7 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              _error!,
+              _ctrl.error!,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onErrorContainer,
                 fontSize: 13,
@@ -544,7 +414,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.close, size: 18),
-            onPressed: () => setState(() => _error = null),
+            onPressed: _ctrl.clearError,
           ),
         ],
       ),
