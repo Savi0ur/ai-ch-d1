@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import '../models/chat.dart';
 
 class ResponseLog {
   final int promptTokens;
@@ -52,9 +53,9 @@ class ApiService {
     _activeClient = null;
   }
 
-  /// Sends a message and returns a stream of content deltas (tokens).
+  /// Sends a list of messages and returns a stream of content deltas (tokens).
   Stream<String> sendMessageStream(
-    String message, {
+    List<ChatMessage> chatMessages, {
     required String model,
     String? systemPrompt,
     int? maxTokens,
@@ -67,7 +68,11 @@ class ApiService {
     if (systemPrompt != null && systemPrompt.isNotEmpty) {
       messages.add({'role': 'system', 'content': systemPrompt});
     }
-    messages.add({'role': 'user', 'content': message});
+    for (final msg in chatMessages) {
+      if (msg.role == 'user' || msg.role == 'assistant') {
+        messages.add({'role': msg.role, 'content': msg.content});
+      }
+    }
 
     final body = <String, dynamic>{
       'model': model,
