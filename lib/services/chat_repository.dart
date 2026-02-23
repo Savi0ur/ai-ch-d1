@@ -30,7 +30,7 @@ class ChatRepository {
   Chat createChat({required String model, String? systemPrompt}) {
     final chat = Chat(
       id: _uuid.v4(),
-      title: 'Новый чат',
+      title: 'New Chat',
       model: model,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
@@ -79,7 +79,7 @@ class ChatRepository {
     final chat = getChat(chatId);
     if (chat != null) {
       chat.updatedAt = DateTime.now();
-      if (role == 'user' && chat.title == 'Новый чат') {
+      if (role == 'user' && chat.title == 'New Chat') {
         chat.title = content.length > 30 ? '${content.substring(0, 30)}...' : content;
       }
       updateChat(chat);

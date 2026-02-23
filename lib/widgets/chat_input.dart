@@ -45,7 +45,7 @@ class ChatInput extends StatelessWidget {
                 keyboardType: TextInputType.multiline,
                 textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
-                  hintText: 'Введите сообщение...',
+                  hintText: 'Type a message...',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
                   ),
@@ -62,13 +62,13 @@ class ChatInput extends StatelessWidget {
               IconButton.filled(
                 onPressed: onCancel,
                 icon: const Icon(Icons.stop),
-                tooltip: 'Остановить',
+                tooltip: 'Stop',
               )
             else
               IconButton.filled(
                 onPressed: _handleSubmit,
                 icon: const Icon(Icons.send),
-                tooltip: 'Отправить',
+                tooltip: 'Send',
               ),
           ],
         ),

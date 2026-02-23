@@ -56,16 +56,16 @@ class _ChatScreenState extends State<ChatScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Удалить чат?'),
-        content: Text('Чат "${chat.title}" будет удалён без возможности восстановления.'),
+        title: const Text('Delete chat?'),
+        content: Text('Chat "${chat.title}" will be permanently deleted.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Отмена'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Удалить'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -137,12 +137,12 @@ class _ChatScreenState extends State<ChatScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Настройки', style: Theme.of(context).textTheme.titleLarge),
+                Text('Settings', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
                   initialValue: _ctrl.selectedModel,
                   decoration: InputDecoration(
-                    labelText: 'Модель',
+                    labelText: 'Model',
                     prefixIcon: const Icon(Icons.smart_toy_outlined),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -166,7 +166,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Text('Расширенные настройки',
+                    Text('Advanced Settings',
                         style: Theme.of(context).textTheme.titleMedium),
                     const Spacer(),
                     Switch(
@@ -186,7 +186,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     minLines: 1,
                     decoration: const InputDecoration(
                       labelText: 'System Prompt',
-                      hintText: 'Введите системные инструкции...',
+                      hintText: 'Enter system instructions...',
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -204,7 +204,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     controller: _ctrl.stopSequenceController,
                     decoration: const InputDecoration(
                       labelText: 'Stop Sequence',
-                      hintText: 'Введите стоп-последовательность...',
+                      hintText: 'Enter stop sequence...',
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -270,32 +270,32 @@ class _ChatScreenState extends State<ChatScreen> {
                     builder: (context) => IconButton(
                       icon: const Icon(Icons.menu),
                       onPressed: () => Scaffold.of(context).openDrawer(),
-                      tooltip: 'Чаты',
+                      tooltip: 'Chats',
                     ),
                   ),
             actions: [
               IconButton(
                 onPressed: _onCreateNewChat,
                 icon: const Icon(Icons.add),
-                tooltip: 'Новый чат',
+                tooltip: 'New chat',
               ),
               IconButton(
                 onPressed: _showSettings,
                 icon: const Icon(Icons.tune),
-                tooltip: 'Настройки',
+                tooltip: 'Settings',
               ),
               if (_ctrl.apiService.lastRequestLog != null)
                 IconButton(
                   onPressed: _showRequestLog,
                   icon: const Icon(Icons.receipt_long),
-                  tooltip: 'Лог запроса',
+                  tooltip: 'Request log',
                 ),
               IconButton(
                 onPressed: widget.onToggleTheme,
                 icon: Icon(
                   widget.isDark ? Icons.light_mode : Icons.dark_mode,
                 ),
-                tooltip: widget.isDark ? 'Светлая тема' : 'Тёмная тема',
+                tooltip: widget.isDark ? 'Light theme' : 'Dark theme',
               ),
             ],
           ),
@@ -359,7 +359,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Начните новый диалог',
+              'Start a new conversation',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),

@@ -30,17 +30,23 @@ class ChatDrawer extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: SizedBox(
               width: double.infinity,
-              child: FilledButton.icon(
+              child: FilledButton(
                 onPressed: onNewChat,
-                icon: const Icon(Icons.add),
-                label: const Text('Новый чат'),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add, size: 20),
+                    SizedBox(width: 8),
+                    Text('New Chat'),
+                  ],
+                ),
               ),
             ),
           ),
           const Divider(height: 1),
           Expanded(
             child: chats.isEmpty
-                ? const Center(child: Text('Нет чатов'))
+                ? const Center(child: Text('No chats'))
                 : ListView.builder(
                     itemCount: chats.length,
                     itemBuilder: (context, index) {
@@ -94,7 +100,7 @@ class _ChatTile extends StatelessWidget {
       trailing: IconButton(
         icon: Icon(Icons.delete_outline, size: 18, color: colors.onSurfaceVariant),
         onPressed: onDelete,
-        tooltip: 'Удалить',
+        tooltip: 'Delete',
       ),
       onTap: onTap,
     );
@@ -103,10 +109,10 @@ class _ChatTile extends StatelessWidget {
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final diff = now.difference(date);
-    if (diff.inMinutes < 1) return 'только что';
-    if (diff.inHours < 1) return '${diff.inMinutes} мин. назад';
-    if (diff.inDays < 1) return '${diff.inHours} ч. назад';
-    if (diff.inDays < 7) return '${diff.inDays} дн. назад';
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays < 1) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
     return '${date.day}.${date.month.toString().padLeft(2, '0')}.${date.year}';
   }
 }
