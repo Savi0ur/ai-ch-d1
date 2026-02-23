@@ -33,28 +33,35 @@ class MessageBubble extends StatelessWidget {
             bottomRight: Radius.circular(isUser ? 4 : 16),
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SelectableText(
-              message.content,
-              style: TextStyle(
-                color: isUser ? colors.onPrimary : colors.onSurface,
-              ),
-            ),
-            if (isStreaming) ...[
-              const SizedBox(height: 4),
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colors.onSurface,
+        child: isStreaming
+            ? ExcludeSemantics(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      message.content,
+                      style: TextStyle(
+                        color: colors.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : SelectableText(
+                message.content,
+                style: TextStyle(
+                  color: isUser ? colors.onPrimary : colors.onSurface,
                 ),
               ),
-            ],
-          ],
-        ),
       ),
     );
   }
