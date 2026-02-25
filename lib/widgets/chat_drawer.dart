@@ -24,10 +24,12 @@ class ChatDrawer extends StatelessWidget {
     return Container(
       width: 280,
       color: colors.surfaceContainerLow,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
             child: SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -62,6 +64,7 @@ class ChatDrawer extends StatelessWidget {
                   ),
           ),
         ],
+        ),
       ),
     );
   }

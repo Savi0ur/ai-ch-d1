@@ -17,6 +17,7 @@ class ModelConfig {
     ModelConfig(id: 'openai/gpt-4.1', label: 'GPT-4.1', inputPrice: 2.00, outputPrice: 8.00),
     ModelConfig(id: 'openai/o3', label: 'o3', inputPrice: 10.00, outputPrice: 40.00),
     ModelConfig(id: 'openai/gpt-4o-mini', label: 'GPT-4o Mini', inputPrice: 0.15, outputPrice: 0.60),
+    ModelConfig(id: 'openai/gpt-3.5-turbo', label: 'GPT-3.5 Turbo', inputPrice: 0.50, outputPrice: 1.50),
   ];
 
   static Map<String, String> get dropdownItems =>
