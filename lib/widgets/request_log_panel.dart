@@ -36,6 +36,10 @@ class RequestLogPanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (apiService.lastSummarizationLog != null) ...[
+                  _buildSummarizationSection(context),
+                  const Divider(height: 24),
+                ],
                 Text(
                   'Request Log',
                   style: Theme.of(context).textTheme.titleMedium,
@@ -57,6 +61,48 @@ class RequestLogPanel extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSummarizationSection(BuildContext context) {
+    final sumLog = apiService.lastSummarizationLog!;
+    final sumRes = apiService.lastSummarizationResponseLog;
+    const encoder = JsonEncoder.withIndent('  ');
+    final sumBodyText = encoder.convert(sumLog.body);
+
+    final prompt = sumRes?.promptTokens ?? 0;
+    final completion = sumRes?.completionTokens ?? 0;
+    final total = sumRes?.totalTokens ?? 0;
+
+    // GPT-4o Mini pricing
+    const sumInputPrice = 0.15;
+    const sumOutputPrice = 0.60;
+    String costStr = '-';
+    if (sumRes != null) {
+      final cost =
+          (prompt * sumInputPrice + completion * sumOutputPrice) / 1000000;
+      costStr = '\$${cost.toStringAsFixed(6)}';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Summarization Request',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 12),
+        _logSection(context, 'Method', sumLog.method),
+        _logSection(context, 'URL', sumLog.url),
+        _logBlock(context, 'Body', sumBodyText),
+        if (sumRes != null) ...[
+          const SizedBox(height: 8),
+          _logSection(context, 'Prompt tokens', '$prompt'),
+          _logSection(context, 'Completion tokens', '$completion'),
+          _logSection(context, 'Total tokens', '$total'),
+          _logSection(context, 'Est. cost', costStr),
+        ],
+      ],
     );
   }
 

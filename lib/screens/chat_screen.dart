@@ -326,6 +326,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Column(
                   children: [
                     Expanded(child: _buildMessageList()),
+                    if (_ctrl.isSummarizing) _buildSummarizingBanner(),
                     if (_ctrl.error != null) _buildErrorBanner(),
                     ChatInput(
                       controller: _inputController,
@@ -388,6 +389,31 @@ class _ChatScreenState extends State<ChatScreen> {
           isStreaming: true,
         );
       },
+    );
+  }
+
+  Widget _buildSummarizingBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Summarizing context...',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSecondaryContainer,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

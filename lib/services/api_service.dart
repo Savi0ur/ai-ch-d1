@@ -41,11 +41,14 @@ class RequestLog {
 
 class ApiService {
   static const String _baseUrl = 'https://openai.api.proxyapi.ru/v1';
+  static const String _summarizationModel = 'openai/gpt-4o-mini';
   static String get _apiKey => dotenv.env['API_KEY'] ?? '';
 
   http.Client? _activeClient;
   RequestLog? lastRequestLog;
   ResponseLog? lastResponseLog;
+  RequestLog? lastSummarizationLog;
+  ResponseLog? lastSummarizationResponseLog;
 
   /// Cancel the current streaming request.
   void cancelStream() {
@@ -69,7 +72,7 @@ class ApiService {
       messages.add({'role': 'system', 'content': systemPrompt});
     }
     for (final msg in chatMessages) {
-      if (msg.role == 'user' || msg.role == 'assistant') {
+      if (msg.role == 'user' || msg.role == 'assistant' || msg.role == 'system') {
         messages.add({'role': msg.role, 'content': msg.content});
       }
     }
@@ -166,5 +169,83 @@ class ApiService {
       _activeClient = null;
       client.close();
     }
+  }
+
+  /// Summarizes a list of messages (and optional existing summary) into a short recap.
+  Future<String> summarize(
+    List<ChatMessage> messages, {
+    String? existingSummary,
+  }) async {
+    final url = Uri.parse('$_baseUrl/chat/completions');
+
+    final userContent = StringBuffer();
+    if (existingSummary != null && existingSummary.isNotEmpty) {
+      userContent.writeln('Previous summary of earlier conversation:');
+      userContent.writeln(existingSummary);
+      userContent.writeln();
+    }
+    userContent.writeln('Messages to summarize:');
+    for (final msg in messages) {
+      userContent.writeln('${msg.role}: ${msg.content}');
+    }
+
+    final body = <String, dynamic>{
+      'model': _summarizationModel,
+      'messages': [
+        {
+          'role': 'system',
+          'content':
+              'You are a summarization assistant. Produce a concise summary '
+              'of the following conversation in 3-5 sentences. Preserve key facts, '
+              'decisions, and context needed to continue the dialogue. '
+              'Reply with the summary only, no preamble.',
+        },
+        {
+          'role': 'user',
+          'content': userContent.toString(),
+        },
+      ],
+      'stream': false,
+    };
+
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $_apiKey',
+    };
+
+    lastSummarizationLog = RequestLog(
+      method: 'POST',
+      url: url.toString(),
+      headers: headers,
+      body: body,
+    );
+    lastSummarizationResponseLog = null;
+
+    final response = await http.post(
+      url,
+      headers: headers,
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Summarization API Error: ${response.statusCode} ${response.body}');
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+
+    final usage = json['usage'] as Map<String, dynamic>?;
+    if (usage != null) {
+      lastSummarizationResponseLog = ResponseLog(
+        promptTokens: usage['prompt_tokens'] as int? ?? 0,
+        completionTokens: usage['completion_tokens'] as int? ?? 0,
+        totalTokens: usage['total_tokens'] as int? ?? 0,
+      );
+    }
+
+    final choices = json['choices'] as List<dynamic>;
+    final message =
+        (choices[0] as Map<String, dynamic>)['message'] as Map<String, dynamic>;
+    return message['content'] as String;
   }
 }

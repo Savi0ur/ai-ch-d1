@@ -7,6 +7,8 @@ class Chat extends HiveObject {
   DateTime createdAt;
   DateTime updatedAt;
   String? systemPrompt;
+  String? summary;
+  int summarizedUpTo;
 
   Chat({
     required this.id,
@@ -15,6 +17,8 @@ class Chat extends HiveObject {
     required this.createdAt,
     required this.updatedAt,
     this.systemPrompt,
+    this.summary,
+    this.summarizedUpTo = 0,
   });
 }
 
@@ -51,13 +55,15 @@ class ChatAdapter extends TypeAdapter<Chat> {
       createdAt: fields[3] as DateTime,
       updatedAt: fields[4] as DateTime,
       systemPrompt: fields[5] as String?,
+      summary: fields[6] as String?,
+      summarizedUpTo: (fields[7] as int?) ?? 0,
     );
   }
 
   @override
   void write(BinaryWriter writer, Chat obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -69,7 +75,11 @@ class ChatAdapter extends TypeAdapter<Chat> {
       ..writeByte(4)
       ..write(obj.updatedAt)
       ..writeByte(5)
-      ..write(obj.systemPrompt);
+      ..write(obj.systemPrompt)
+      ..writeByte(6)
+      ..write(obj.summary)
+      ..writeByte(7)
+      ..write(obj.summarizedUpTo);
   }
 }
 
