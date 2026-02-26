@@ -66,6 +66,7 @@ class ChatController extends ChangeNotifier {
     messages = [];
     streamingContent = '';
     error = null;
+    apiService.clearLogs();
     _resetSettings();
     notifyListeners();
   }
@@ -76,6 +77,7 @@ class ChatController extends ChangeNotifier {
     _selectedModel = chat.model;
     streamingContent = '';
     error = null;
+    apiService.clearLogs();
     _resetSettings();
     if (chat.systemPrompt != null && chat.systemPrompt!.isNotEmpty) {
       systemPromptController.text = chat.systemPrompt!;

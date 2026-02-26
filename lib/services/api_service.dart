@@ -50,6 +50,14 @@ class ApiService {
   RequestLog? lastSummarizationLog;
   ResponseLog? lastSummarizationResponseLog;
 
+  /// Сбрасывает все сохранённые логи запросов/ответов.
+  void clearLogs() {
+    lastRequestLog = null;
+    lastResponseLog = null;
+    lastSummarizationLog = null;
+    lastSummarizationResponseLog = null;
+  }
+
   /// Cancel the current streaming request.
   void cancelStream() {
     _activeClient?.close();
