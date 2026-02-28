@@ -23,6 +23,29 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Context strategy
+  String _contextStrategy = 'summarization';
+  String get contextStrategy => _contextStrategy;
+  set contextStrategy(String value) {
+    _contextStrategy = value;
+    if (activeChat != null) {
+      activeChat!.contextStrategy = value;
+      repository.updateChat(activeChat!);
+    }
+    notifyListeners();
+  }
+
+  int _slidingWindowSize = 20;
+  int get slidingWindowSize => _slidingWindowSize;
+  set slidingWindowSize(int value) {
+    _slidingWindowSize = value;
+    if (activeChat != null) {
+      activeChat!.slidingWindowSize = value;
+      repository.updateChat(activeChat!);
+    }
+    notifyListeners();
+  }
+
   // Request settings
   bool _settingsEnabled = false;
   bool get settingsEnabled => _settingsEnabled;
@@ -75,6 +98,8 @@ class ChatController extends ChangeNotifier {
     activeChat = chat;
     messages = repository.getMessages(chat.id);
     _selectedModel = chat.model;
+    _contextStrategy = chat.contextStrategy;
+    _slidingWindowSize = chat.slidingWindowSize;
     streamingContent = '';
     error = null;
     apiService.clearLogs();
@@ -89,6 +114,8 @@ class ChatController extends ChangeNotifier {
   void _resetSettings() {
     _settingsEnabled = false;
     _temperature = 0.7;
+    _contextStrategy = activeChat?.contextStrategy ?? 'summarization';
+    _slidingWindowSize = activeChat?.slidingWindowSize ?? 20;
     maxTokensController.text = '1024';
     stopSequenceController.clear();
     systemPromptController.clear();
@@ -108,23 +135,87 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Формирует список сообщений для API-запроса: вставляет саммари как
-  /// системное сообщение и отправляет только «живые» (не суммаризированные) сообщения.
+  /// Формирует список сообщений для API-запроса в зависимости от стратегии контекста.
   List<ChatMessage> _buildApiMessages() {
     final chat = activeChat!;
-    final liveMessages = messages.sublist(chat.summarizedUpTo);
 
-    if (chat.summary == null || chat.summary!.isEmpty) return liveMessages;
+    switch (chat.contextStrategy) {
+      case 'sticky_facts':
+        final n = chat.slidingWindowSize;
+        final recent = messages.length > n
+            ? messages.sublist(messages.length - n)
+            : messages;
+        if (chat.facts != null && chat.facts!.isNotEmpty) {
+          final factsMsg = ChatMessage(
+            id: 'facts',
+            chatId: chat.id,
+            role: 'system',
+            content: 'Known facts:\n${chat.facts}',
+            timestamp: DateTime.now(),
+          );
+          return [factsMsg, ...recent];
+        }
+        return recent;
 
-    // Виртуальное системное сообщение с саммари
-    final summaryMsg = ChatMessage(
-      id: 'summary',
-      chatId: chat.id,
-      role: 'system',
-      content: 'Summary of earlier conversation:\n${chat.summary}',
-      timestamp: DateTime.now(),
+      case 'sliding_window':
+        final n = chat.slidingWindowSize;
+        return messages.length > n
+            ? messages.sublist(messages.length - n)
+            : messages;
+
+      case 'branching':
+        return messages; // все сообщения, пользователь сам управляет ветками
+
+      case 'summarization':
+      default:
+        final liveMessages = messages.sublist(chat.summarizedUpTo);
+        if (chat.summary == null || chat.summary!.isEmpty) return liveMessages;
+        final summaryMsg = ChatMessage(
+          id: 'summary',
+          chatId: chat.id,
+          role: 'system',
+          content: 'Summary of earlier conversation:\n${chat.summary}',
+          timestamp: DateTime.now(),
+        );
+        return [summaryMsg, ...liveMessages];
+    }
+  }
+
+  /// Диспатчер стратегий управления контекстом.
+  Future<void> _manageContext() async {
+    switch (activeChat!.contextStrategy) {
+      case 'summarization':
+        await _summarizeIfNeeded();
+      case 'sliding_window':
+      case 'sticky_facts':
+      case 'branching':
+        break; // обрезка только при формировании API-запроса в _buildApiMessages
+    }
+  }
+
+  /// Sticky Facts: извлекает key-value facts из последних сообщений.
+  Future<void> _updateFacts() async {
+    final n = activeChat!.slidingWindowSize;
+    final recentMessages = messages.length > n
+        ? messages.sublist(messages.length - n)
+        : messages;
+    final newFacts = await apiService.extractFacts(
+      recentMessages,
+      existingFacts: activeChat!.facts,
     );
-    return [summaryMsg, ...liveMessages];
+    activeChat!.facts = newFacts;
+    repository.updateChat(activeChat!);
+  }
+
+  /// Branching: создаёт ветку от указанного сообщения.
+  void createBranch(int messageIndex) {
+    final branch = repository.createBranch(
+      sourceChat: activeChat!,
+      messageIndex: messageIndex,
+      messages: messages,
+    );
+    loadChats();
+    selectChat(branch);
   }
 
   /*
@@ -227,6 +318,9 @@ class ChatController extends ChangeNotifier {
         model: selectedModel,
         systemPrompt: systemPrompt,
       );
+      activeChat!.contextStrategy = _contextStrategy;
+      activeChat!.slidingWindowSize = _slidingWindowSize;
+      repository.updateChat(activeChat!);
     }
 
     // Сохраняем сообщение пользователя
@@ -246,8 +340,8 @@ class ChatController extends ChangeNotifier {
     stopwatch.start();
 
     try {
-      // Суммаризируем старые сообщения если контекстное окно почти заполнено
-      await _summarizeIfNeeded();
+      // Управляем контекстом в зависимости от выбранной стратегии
+      await _manageContext();
 
       final apiMessages = _buildApiMessages();
 
@@ -277,7 +371,7 @@ class ChatController extends ChangeNotifier {
           isStreaming = false;
           notifyListeners();
         },
-        onDone: () {
+        onDone: () async {
           stopwatch.stop();
           if (streamingContent.isNotEmpty) {
             final assistantMsg = repository.addMessage(
@@ -290,6 +384,15 @@ class ChatController extends ChangeNotifier {
           }
           isStreaming = false;
           loadChats();
+
+          // Sticky Facts: извлекаем facts после каждого ответа
+          if (activeChat?.contextStrategy == 'sticky_facts') {
+            try {
+              await _updateFacts();
+            } catch (_) {
+              // Не прерываем поток из-за ошибки извлечения facts
+            }
+          }
         },
       );
     } catch (e) {

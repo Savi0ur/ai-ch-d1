@@ -256,4 +256,64 @@ class ApiService {
         (choices[0] as Map<String, dynamic>)['message'] as Map<String, dynamic>;
     return message['content'] as String;
   }
+
+  /// Extracts key facts from recent messages as a JSON string (for Sticky Facts strategy).
+  Future<String> extractFacts(
+    List<ChatMessage> recentMessages, {
+    String? existingFacts,
+  }) async {
+    final url = Uri.parse('$_baseUrl/chat/completions');
+
+    final userContent = StringBuffer();
+    if (existingFacts != null && existingFacts.isNotEmpty) {
+      userContent.writeln('Existing facts (JSON):');
+      userContent.writeln(existingFacts);
+      userContent.writeln();
+    }
+    userContent.writeln('Recent messages:');
+    for (final msg in recentMessages) {
+      userContent.writeln('${msg.role}: ${msg.content}');
+    }
+
+    final body = <String, dynamic>{
+      'model': _summarizationModel,
+      'messages': [
+        {
+          'role': 'system',
+          'content':
+              'Extract key facts from the conversation as JSON key-value pairs. '
+              'Merge with existing facts if provided. Update values if they changed. '
+              'Remove facts that are no longer relevant. '
+              'Return only valid JSON object, no preamble or explanation.',
+        },
+        {
+          'role': 'user',
+          'content': userContent.toString(),
+        },
+      ],
+      'stream': false,
+    };
+
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $_apiKey',
+    };
+
+    final response = await http.post(
+      url,
+      headers: headers,
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Extract facts API Error: ${response.statusCode} ${response.body}');
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final choices = json['choices'] as List<dynamic>;
+    final message =
+        (choices[0] as Map<String, dynamic>)['message'] as Map<String, dynamic>;
+    return message['content'] as String;
+  }
 }

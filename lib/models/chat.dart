@@ -9,6 +9,11 @@ class Chat extends HiveObject {
   String? systemPrompt;
   String? summary;
   int summarizedUpTo;
+  String contextStrategy;     // 'summarization' | 'sliding_window' | 'sticky_facts' | 'branching'
+  int slidingWindowSize;      // N для sliding window и sticky facts (по умолчанию 20)
+  String? facts;              // JSON-строка с key-value facts
+  String? parentChatId;       // ID родительского чата (для веток)
+  int? branchMessageIndex;    // Индекс сообщения-checkpoint (для веток)
 
   Chat({
     required this.id,
@@ -19,6 +24,11 @@ class Chat extends HiveObject {
     this.systemPrompt,
     this.summary,
     this.summarizedUpTo = 0,
+    this.contextStrategy = 'summarization',
+    this.slidingWindowSize = 20,
+    this.facts,
+    this.parentChatId,
+    this.branchMessageIndex,
   });
 }
 
@@ -57,13 +67,18 @@ class ChatAdapter extends TypeAdapter<Chat> {
       systemPrompt: fields[5] as String?,
       summary: fields[6] as String?,
       summarizedUpTo: (fields[7] as int?) ?? 0,
+      contextStrategy: (fields[8] as String?) ?? 'summarization',
+      slidingWindowSize: (fields[9] as int?) ?? 20,
+      facts: fields[10] as String?,
+      parentChatId: fields[11] as String?,
+      branchMessageIndex: fields[12] as int?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Chat obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -79,7 +94,17 @@ class ChatAdapter extends TypeAdapter<Chat> {
       ..writeByte(6)
       ..write(obj.summary)
       ..writeByte(7)
-      ..write(obj.summarizedUpTo);
+      ..write(obj.summarizedUpTo)
+      ..writeByte(8)
+      ..write(obj.contextStrategy)
+      ..writeByte(9)
+      ..write(obj.slidingWindowSize)
+      ..writeByte(10)
+      ..write(obj.facts)
+      ..writeByte(11)
+      ..write(obj.parentChatId)
+      ..writeByte(12)
+      ..write(obj.branchMessageIndex);
   }
 }
 

@@ -91,4 +91,43 @@ class ChatRepository {
   void updateMessage(ChatMessage message) {
     _messagesBox.put(message.id, message);
   }
+
+  void deleteMessage(String id) {
+    _messagesBox.delete(id);
+  }
+
+  Chat createBranch({
+    required Chat sourceChat,
+    required int messageIndex,
+    required List<ChatMessage> messages,
+  }) {
+    final branch = Chat(
+      id: _uuid.v4(),
+      title: '${sourceChat.title} (branch)',
+      model: sourceChat.model,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      systemPrompt: sourceChat.systemPrompt,
+      contextStrategy: sourceChat.contextStrategy,
+      slidingWindowSize: sourceChat.slidingWindowSize,
+      parentChatId: sourceChat.id,
+      branchMessageIndex: messageIndex,
+    );
+    _chatsBox.put(branch.id, branch);
+
+    // Копируем сообщения до messageIndex включительно
+    final toCopy = messages.sublist(0, messageIndex + 1);
+    for (final msg in toCopy) {
+      final copy = ChatMessage(
+        id: _uuid.v4(),
+        chatId: branch.id,
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp,
+      );
+      _messagesBox.put(copy.id, copy);
+    }
+
+    return branch;
+  }
 }

@@ -74,6 +74,30 @@ class _ChatScreenState extends State<ChatScreen> {
     _ctrl.deleteChat(chat.id);
   }
 
+  Future<void> _onBranchFromMessage(int messageIndex) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create branch?'),
+        content: const Text(
+          'A new chat will be created with messages up to this point.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    _ctrl.createBranch(messageIndex);
+  }
+
   void _onSend() {
     final text = _inputController.text.trim();
     if (text.isEmpty) return;
@@ -139,6 +163,78 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 Text('Settings', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: _ctrl.contextStrategy,
+                  decoration: InputDecoration(
+                    labelText: 'Context Strategy',
+                    prefixIcon: const Icon(Icons.memory),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'summarization',
+                      child: Text('Summarization'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'sliding_window',
+                      child: Text('Sliding Window'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'sticky_facts',
+                      child: Text('Sticky Facts'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'branching',
+                      child: Text('Branching'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      _ctrl.contextStrategy = value;
+                      setSheetState(() {});
+                    }
+                  },
+                ),
+                const SizedBox(height: 8),
+                if (_ctrl.contextStrategy == 'sliding_window' ||
+                    _ctrl.contextStrategy == 'sticky_facts')
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: TextField(
+                      controller: TextEditingController(
+                        text: _ctrl.slidingWindowSize.toString(),
+                      ),
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Window Size (messages)',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        filled: true,
+                      ),
+                      onChanged: (value) {
+                        final n = int.tryParse(value);
+                        if (n != null && n > 0) {
+                          _ctrl.slidingWindowSize = n;
+                        }
+                      },
+                    ),
+                  ),
+                if (_ctrl.contextStrategy == 'branching')
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'Long-press a message to create a branch from that point.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ),
+                const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   initialValue: _ctrl.selectedModel,
                   decoration: InputDecoration(
@@ -376,7 +472,12 @@ class _ChatScreenState extends State<ChatScreen> {
       itemCount: allMessages.length + (hasStreaming ? 1 : 0),
       itemBuilder: (context, index) {
         if (index < allMessages.length) {
-          return MessageBubble(message: allMessages[index]);
+          return MessageBubble(
+            message: allMessages[index],
+            onBranch: _ctrl.activeChat?.contextStrategy == 'branching'
+                ? () => _onBranchFromMessage(index)
+                : null,
+          );
         }
         return MessageBubble(
           message: ChatMessage(

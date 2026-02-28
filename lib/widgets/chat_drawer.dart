@@ -87,25 +87,33 @@ class _ChatTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
-    return ListTile(
-      selected: isActive,
-      selectedTileColor: colors.primaryContainer.withValues(alpha: 0.3),
-      title: Text(
-        chat.title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 14),
+    final isBranch = chat.parentChatId != null;
+
+    return Padding(
+      padding: EdgeInsets.only(left: isBranch ? 16 : 0),
+      child: ListTile(
+        selected: isActive,
+        selectedTileColor: colors.primaryContainer.withValues(alpha: 0.3),
+        leading: isBranch
+            ? Icon(Icons.call_split, size: 18, color: colors.onSurfaceVariant)
+            : null,
+        title: Text(
+          chat.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 14),
+        ),
+        subtitle: Text(
+          _formatDate(chat.updatedAt),
+          style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+        ),
+        trailing: IconButton(
+          icon: Icon(Icons.delete_outline, size: 18, color: colors.onSurfaceVariant),
+          onPressed: onDelete,
+          tooltip: 'Delete',
+        ),
+        onTap: onTap,
       ),
-      subtitle: Text(
-        _formatDate(chat.updatedAt),
-        style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
-      ),
-      trailing: IconButton(
-        icon: Icon(Icons.delete_outline, size: 18, color: colors.onSurfaceVariant),
-        onPressed: onDelete,
-        tooltip: 'Delete',
-      ),
-      onTap: onTap,
     );
   }
 
