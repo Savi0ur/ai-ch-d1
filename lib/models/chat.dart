@@ -14,6 +14,7 @@ class Chat extends HiveObject {
   String? facts;              // JSON-строка с key-value facts
   String? parentChatId;       // ID родительского чата (для веток)
   int? branchMessageIndex;    // Индекс сообщения-checkpoint (для веток)
+  String? workingMemory;      // JSON: структура текущей задачи (goal, steps, etc.)
 
   Chat({
     required this.id,
@@ -29,6 +30,7 @@ class Chat extends HiveObject {
     this.facts,
     this.parentChatId,
     this.branchMessageIndex,
+    this.workingMemory,
   });
 }
 
@@ -72,13 +74,14 @@ class ChatAdapter extends TypeAdapter<Chat> {
       facts: fields[10] as String?,
       parentChatId: fields[11] as String?,
       branchMessageIndex: fields[12] as int?,
+      workingMemory: fields[13] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Chat obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -104,7 +107,9 @@ class ChatAdapter extends TypeAdapter<Chat> {
       ..writeByte(11)
       ..write(obj.parentChatId)
       ..writeByte(12)
-      ..write(obj.branchMessageIndex);
+      ..write(obj.branchMessageIndex)
+      ..writeByte(13)
+      ..write(obj.workingMemory);
   }
 }
 

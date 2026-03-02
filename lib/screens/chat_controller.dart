@@ -4,9 +4,11 @@ import '../models/chat.dart';
 import '../models/model_config.dart';
 import '../services/api_service.dart';
 import '../services/chat_repository.dart';
+import '../services/memory_service.dart';
 
 class ChatController extends ChangeNotifier {
   final ChatRepository repository;
+  final MemoryService memoryService;
   final ApiService apiService = ApiService();
   final Stopwatch stopwatch = Stopwatch();
 
@@ -61,12 +63,21 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Working memory toggle
+  bool _workingMemoryEnabled = false;
+  bool get workingMemoryEnabled => _workingMemoryEnabled;
+  set workingMemoryEnabled(bool value) {
+    _workingMemoryEnabled = value;
+    notifyListeners();
+  }
+
   // Chat state
   Chat? activeChat;
   List<ChatMessage> messages = [];
   List<Chat> chats = [];
   bool isStreaming = false;
   bool isSummarizing = false;
+  bool isUpdatingMemory = false;
   String streamingContent = '';
   String? error;
 
@@ -75,7 +86,7 @@ class ChatController extends ChangeNotifier {
 
   StreamSubscription<String>? _streamSubscription;
 
-  ChatController({required this.repository}) {
+  ChatController({required this.repository, required this.memoryService}) {
     loadChats();
   }
 
@@ -135,10 +146,33 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Формирует единый системный промпт: user prompt + LTM + working memory.
+  String _buildSystemPrompt() {
+    final chat = activeChat!;
+    final parts = <String>[];
+
+    final userPrompt = settingsEnabled
+        ? systemPromptController.text.trim()
+        : (chat.systemPrompt ?? '');
+    if (userPrompt.isNotEmpty) parts.add(userPrompt);
+
+    final ltm = memoryService.buildMemoryPrompt();
+    if (ltm.isNotEmpty) parts.add(ltm);
+
+    if (_workingMemoryEnabled &&
+        chat.workingMemory != null &&
+        chat.workingMemory!.isNotEmpty) {
+      parts.add('Current task structure (working memory):\n${chat.workingMemory}');
+    }
+
+    return parts.join('\n\n');
+  }
+
   /// Формирует список сообщений для API-запроса в зависимости от стратегии контекста.
   List<ChatMessage> _buildApiMessages() {
     final chat = activeChat!;
 
+    List<ChatMessage> base;
     switch (chat.contextStrategy) {
       case 'sticky_facts':
         final n = chat.slidingWindowSize;
@@ -153,32 +187,38 @@ class ChatController extends ChangeNotifier {
             content: 'Known facts:\n${chat.facts}',
             timestamp: DateTime.now(),
           );
-          return [factsMsg, ...recent];
+          base = [factsMsg, ...recent];
+        } else {
+          base = recent;
         }
-        return recent;
 
       case 'sliding_window':
         final n = chat.slidingWindowSize;
-        return messages.length > n
+        base = messages.length > n
             ? messages.sublist(messages.length - n)
             : messages;
 
       case 'branching':
-        return messages; // все сообщения, пользователь сам управляет ветками
+        base = messages;
 
       case 'summarization':
       default:
         final liveMessages = messages.sublist(chat.summarizedUpTo);
-        if (chat.summary == null || chat.summary!.isEmpty) return liveMessages;
-        final summaryMsg = ChatMessage(
-          id: 'summary',
-          chatId: chat.id,
-          role: 'system',
-          content: 'Summary of earlier conversation:\n${chat.summary}',
-          timestamp: DateTime.now(),
-        );
-        return [summaryMsg, ...liveMessages];
+        if (chat.summary == null || chat.summary!.isEmpty) {
+          base = liveMessages;
+        } else {
+          final summaryMsg = ChatMessage(
+            id: 'summary',
+            chatId: chat.id,
+            role: 'system',
+            content: 'Summary of earlier conversation:\n${chat.summary}',
+            timestamp: DateTime.now(),
+          );
+          base = [summaryMsg, ...liveMessages];
+        }
     }
+
+    return base;
   }
 
   /// Диспатчер стратегий управления контекстом.
@@ -191,6 +231,69 @@ class ChatController extends ChangeNotifier {
       case 'branching':
         break; // обрезка только при формировании API-запроса в _buildApiMessages
     }
+  }
+
+  /// Обновляет рабочую память (working memory) текущего чата.
+  Future<void> _updateWorkingMemory() async {
+    if (activeChat == null) return;
+    final n = activeChat!.slidingWindowSize;
+    final recentMessages = messages.length > n
+        ? messages.sublist(messages.length - n)
+        : messages;
+    final newWm = await apiService.extractWorkingMemory(
+      recentMessages,
+      existingWorkingMemory: activeChat!.workingMemory,
+    );
+    activeChat!.workingMemory = newWm;
+    repository.updateChat(activeChat!);
+    notifyListeners();
+  }
+
+  /// Обновляет долговременную память пользователя.
+  Future<void> _updateLongTermMemory() async {
+    if (activeChat == null) return;
+    final n = activeChat!.slidingWindowSize;
+    final recentMessages = messages.length > n
+        ? messages.sublist(messages.length - n)
+        : messages;
+    final existing = memoryService.getMemory();
+    final extracted = await apiService.extractUserMemory(
+      recentMessages,
+      existingProfile: existing.profile,
+      existingFacts: existing.facts,
+      existingInstructions: existing.instructions,
+      existingGlossary: existing.glossary,
+    );
+
+    bool changed = false;
+    if (extracted['profile'] != null) {
+      existing.profile = extracted['profile'];
+      changed = true;
+    }
+    if (extracted['facts'] != null) {
+      existing.facts = extracted['facts'];
+      changed = true;
+    }
+    if (extracted['instructions'] != null) {
+      existing.instructions = extracted['instructions'];
+      changed = true;
+    }
+    if (extracted['glossary'] != null) {
+      existing.glossary = extracted['glossary'];
+      changed = true;
+    }
+    if (changed) {
+      memoryService.saveMemory(existing);
+      notifyListeners();
+    }
+  }
+
+  /// Ручное обновление рабочей памяти через UI.
+  void updateWorkingMemoryManually(String json) {
+    if (activeChat == null) return;
+    activeChat!.workingMemory = json;
+    repository.updateChat(activeChat!);
+    notifyListeners();
   }
 
   /// Sticky Facts: извлекает key-value facts из последних сообщений.
@@ -348,9 +451,7 @@ class ChatController extends ChangeNotifier {
       final stream = apiService.sendMessageStream(
         apiMessages,
         model: selectedModel,
-        systemPrompt: settingsEnabled
-            ? systemPromptController.text.trim()
-            : activeChat!.systemPrompt,
+        systemPrompt: _buildSystemPrompt(),
         maxTokens: settingsEnabled
             ? int.tryParse(maxTokensController.text.trim())
             : null,
@@ -393,6 +494,19 @@ class ChatController extends ChangeNotifier {
               // Не прерываем поток из-за ошибки извлечения facts
             }
           }
+
+          // Working memory: обновляем в фоне если включено
+          if (_workingMemoryEnabled) {
+            isUpdatingMemory = true;
+            notifyListeners();
+            _updateWorkingMemory().catchError((_) {}).whenComplete(() {
+              isUpdatingMemory = false;
+              notifyListeners();
+            });
+          }
+
+          // Long-term memory: всегда обновляем в фоне
+          _updateLongTermMemory().catchError((_) {});
         },
       );
     } catch (e) {

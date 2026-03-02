@@ -2,20 +2,24 @@ import 'package:flutter/material.dart';
 import '../models/chat.dart';
 import '../models/model_config.dart';
 import '../services/chat_repository.dart';
+import '../services/memory_service.dart';
 import '../widgets/chat_drawer.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/request_log_panel.dart';
+import '../widgets/working_memory_panel.dart';
 import 'chat_controller.dart';
 
 class ChatScreen extends StatefulWidget {
   final ChatRepository repository;
+  final MemoryService memoryService;
   final bool isDark;
   final VoidCallback onToggleTheme;
 
   const ChatScreen({
     super.key,
     required this.repository,
+    required this.memoryService,
     required this.isDark,
     required this.onToggleTheme,
   });
@@ -33,7 +37,10 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _ctrl = ChatController(repository: widget.repository);
+    _ctrl = ChatController(
+      repository: widget.repository,
+      memoryService: widget.memoryService,
+    );
   }
 
   void _closeDrawerIfOpen() {
@@ -404,6 +411,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     onNewChat: _onCreateNewChat,
                     onSelectChat: _onSelectChat,
                     onDeleteChat: _onDeleteChat,
+                    memoryService: widget.memoryService,
                   ),
                 ),
           body: Row(
@@ -415,6 +423,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   onNewChat: _onCreateNewChat,
                   onSelectChat: _onSelectChat,
                   onDeleteChat: _onDeleteChat,
+                  memoryService: widget.memoryService,
                 ),
               if (isWide)
                 const VerticalDivider(width: 1),
@@ -424,6 +433,16 @@ class _ChatScreenState extends State<ChatScreen> {
                     Expanded(child: _buildMessageList()),
                     if (_ctrl.isSummarizing) _buildSummarizingBanner(),
                     if (_ctrl.error != null) _buildErrorBanner(),
+                    WorkingMemoryPanel(
+                        workingMemory: _ctrl.activeChat?.workingMemory,
+                        isUpdating: _ctrl.isUpdatingMemory,
+                        enabled: _ctrl.workingMemoryEnabled,
+                        onToggle: (value) {
+                          _ctrl.workingMemoryEnabled = value;
+                        },
+                        onEdit: _ctrl.updateWorkingMemoryManually,
+                        onClear: () => _ctrl.updateWorkingMemoryManually(''),
+                      ),
                     ChatInput(
                       controller: _inputController,
                       isStreaming: _ctrl.isStreaming,

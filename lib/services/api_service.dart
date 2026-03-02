@@ -257,6 +257,160 @@ class ApiService {
     return message['content'] as String;
   }
 
+  /// Extracts working memory (current task structure) as a JSON string.
+  Future<String> extractWorkingMemory(
+    List<ChatMessage> messages, {
+    String? existingWorkingMemory,
+  }) async {
+    final url = Uri.parse('$_baseUrl/chat/completions');
+
+    final userContent = StringBuffer();
+    if (existingWorkingMemory != null && existingWorkingMemory.isNotEmpty) {
+      userContent.writeln('Existing working memory (JSON):');
+      userContent.writeln(existingWorkingMemory);
+      userContent.writeln();
+    }
+    userContent.writeln('Recent messages:');
+    for (final msg in messages) {
+      userContent.writeln('${msg.role}: ${msg.content}');
+    }
+
+    final body = <String, dynamic>{
+      'model': _summarizationModel,
+      'messages': [
+        {
+          'role': 'system',
+          'content':
+              'Analyze the conversation and produce a working memory JSON with keys: '
+              'goal (string), steps (array of strings), current_step (string), '
+              'results (string), notes (string). '
+              'Rules: '
+              '1. If the conversation topic has significantly changed from the existing goal, REPLACE the working memory entirely — do not preserve outdated goals or steps. '
+              '2. If the conversation is continuing the same task, update current_step and results while keeping relevant steps. '
+              '3. Omit keys that have no meaningful value. '
+              'Return only valid JSON, no preamble or explanation.',
+        },
+        {
+          'role': 'user',
+          'content': userContent.toString(),
+        },
+      ],
+      'stream': false,
+    };
+
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $_apiKey',
+    };
+
+    final response = await http.post(
+      url,
+      headers: headers,
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Extract working memory API Error: ${response.statusCode} ${response.body}');
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final choices = json['choices'] as List<dynamic>;
+    final message =
+        (choices[0] as Map<String, dynamic>)['message'] as Map<String, dynamic>;
+    return message['content'] as String;
+  }
+
+  /// Extracts long-term user memory fields from conversation messages.
+  Future<Map<String, String?>> extractUserMemory(
+    List<ChatMessage> messages, {
+    String? existingProfile,
+    String? existingFacts,
+    String? existingInstructions,
+    String? existingGlossary,
+  }) async {
+    final url = Uri.parse('$_baseUrl/chat/completions');
+
+    final userContent = StringBuffer();
+    if (existingProfile != null && existingProfile.isNotEmpty) {
+      userContent.writeln('Existing profile: $existingProfile');
+    }
+    if (existingFacts != null && existingFacts.isNotEmpty) {
+      userContent.writeln('Existing facts (JSON): $existingFacts');
+    }
+    if (existingInstructions != null && existingInstructions.isNotEmpty) {
+      userContent.writeln('Existing instructions: $existingInstructions');
+    }
+    if (existingGlossary != null && existingGlossary.isNotEmpty) {
+      userContent.writeln('Existing glossary (JSON): $existingGlossary');
+    }
+    if (userContent.isNotEmpty) userContent.writeln();
+    userContent.writeln('Recent messages:');
+    for (final msg in messages) {
+      userContent.writeln('${msg.role}: ${msg.content}');
+    }
+
+    final body = <String, dynamic>{
+      'model': _summarizationModel,
+      'messages': [
+        {
+          'role': 'system',
+          'content':
+              'Extract long-term user memory from the conversation. '
+              'Return a JSON object with ONLY the keys for which you found concrete information: '
+              '"profile" (plain text: name, language, communication preferences), '
+              '"facts" (JSON object with arbitrary keys for any concrete user facts: job, projects, skills, etc.), '
+              '"instructions" (plain text: explicit permanent instructions the user wants always applied), '
+              '"glossary" (JSON object: domain term -> definition). '
+              'Rules: '
+              '1. Omit a key entirely if you have nothing to put there. '
+              '2. Never use null or empty string as a value. '
+              '3. Merge with existing memory — keep existing values, update if changed. '
+              'Return only valid JSON, no preamble.',
+        },
+        {
+          'role': 'user',
+          'content': userContent.toString(),
+        },
+      ],
+      'stream': false,
+    };
+
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $_apiKey',
+    };
+
+    final response = await http.post(
+      url,
+      headers: headers,
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Extract user memory API Error: ${response.statusCode} ${response.body}');
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final choices = json['choices'] as List<dynamic>;
+    final message =
+        (choices[0] as Map<String, dynamic>)['message'] as Map<String, dynamic>;
+    final content = message['content'] as String;
+
+    try {
+      final parsed = jsonDecode(content) as Map<String, dynamic>;
+      return {
+        'profile': _nonEmpty(parsed['profile']),
+        'facts': _nonEmptyJson(parsed['facts']),
+        'instructions': _nonEmpty(parsed['instructions']),
+        'glossary': _nonEmptyJson(parsed['glossary']),
+      };
+    } catch (_) {
+      return {'profile': null, 'facts': null, 'instructions': null, 'glossary': null};
+    }
+  }
+
   /// Extracts key facts from recent messages as a JSON string (for Sticky Facts strategy).
   Future<String> extractFacts(
     List<ChatMessage> recentMessages, {
@@ -315,5 +469,31 @@ class ApiService {
     final message =
         (choices[0] as Map<String, dynamic>)['message'] as Map<String, dynamic>;
     return message['content'] as String;
+  }
+
+  /// Возвращает строку если она непустая, иначе null.
+  String? _nonEmpty(dynamic value) {
+    if (value == null) return null;
+    final s = value.toString().trim();
+    return s.isEmpty ? null : s;
+  }
+
+  /// Принимает Map или строку-JSON, удаляет null-значения.
+  /// Возвращает null если результирующий объект пустой.
+  String? _nonEmptyJson(dynamic value) {
+    Map<String, dynamic>? map;
+    if (value is Map) {
+      map = Map<String, dynamic>.from(value);
+    } else if (value is String && value.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value.trim());
+        if (decoded is Map) map = Map<String, dynamic>.from(decoded);
+      } catch (_) {
+        return _nonEmpty(value);
+      }
+    }
+    if (map == null) return null;
+    map.removeWhere((_, v) => v == null);
+    return map.isEmpty ? null : jsonEncode(map);
   }
 }
