@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/chat.dart';
 import '../models/model_config.dart';
 import '../services/chat_repository.dart';
+import '../services/communication_profile_service.dart';
 import '../services/memory_service.dart';
 import '../widgets/chat_drawer.dart';
 import '../widgets/chat_input.dart';
@@ -13,6 +14,7 @@ import 'chat_controller.dart';
 class ChatScreen extends StatefulWidget {
   final ChatRepository repository;
   final MemoryService memoryService;
+  final CommunicationProfileService profileService;
   final bool isDark;
   final VoidCallback onToggleTheme;
 
@@ -20,6 +22,7 @@ class ChatScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.memoryService,
+    required this.profileService,
     required this.isDark,
     required this.onToggleTheme,
   });
@@ -40,6 +43,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _ctrl = ChatController(
       repository: widget.repository,
       memoryService: widget.memoryService,
+      profileService: widget.profileService,
     );
   }
 
@@ -411,7 +415,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     onNewChat: _onCreateNewChat,
                     onSelectChat: _onSelectChat,
                     onDeleteChat: _onDeleteChat,
-                    memoryService: widget.memoryService,
+                    profileService: widget.profileService,
                   ),
                 ),
           body: Row(
@@ -423,7 +427,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   onNewChat: _onCreateNewChat,
                   onSelectChat: _onSelectChat,
                   onDeleteChat: _onDeleteChat,
-                  memoryService: widget.memoryService,
+                  profileService: widget.profileService,
                 ),
               if (isWide)
                 const VerticalDivider(width: 1),

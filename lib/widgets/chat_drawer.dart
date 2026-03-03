@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/chat.dart';
-import '../models/user_memory.dart';
-import '../services/memory_service.dart';
+import '../models/communication_profile.dart';
+import '../services/communication_profile_service.dart';
+import 'package:uuid/uuid.dart';
 
 class ChatDrawer extends StatelessWidget {
   final List<Chat> chats;
@@ -9,7 +10,7 @@ class ChatDrawer extends StatelessWidget {
   final VoidCallback onNewChat;
   final ValueChanged<Chat> onSelectChat;
   final ValueChanged<Chat> onDeleteChat;
-  final MemoryService memoryService;
+  final CommunicationProfileService profileService;
 
   const ChatDrawer({
     super.key,
@@ -18,7 +19,7 @@ class ChatDrawer extends StatelessWidget {
     required this.onNewChat,
     required this.onSelectChat,
     required this.onDeleteChat,
-    required this.memoryService,
+    required this.profileService,
   });
 
   @override
@@ -34,42 +35,42 @@ class ChatDrawer extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.all(12),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: onNewChat,
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.add, size: 20),
-                    SizedBox(width: 8),
-                    Text('New Chat'),
-                  ],
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: onNewChat,
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add, size: 20),
+                      SizedBox(width: 8),
+                      Text('New Chat'),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: chats.isEmpty
-                ? const Center(child: Text('No chats'))
-                : ListView.builder(
-                    itemCount: chats.length,
-                    itemBuilder: (context, index) {
-                      final chat = chats[index];
-                      final isActive = chat.id == activeChatId;
-                      return _ChatTile(
-                        chat: chat,
-                        isActive: isActive,
-                        onTap: () => onSelectChat(chat),
-                        onDelete: () => onDeleteChat(chat),
-                      );
-                    },
-                  ),
-          ),
-          const Divider(height: 1),
-          _UserMemorySection(memoryService: memoryService),
-        ],
+            const Divider(height: 1),
+            Expanded(
+              child: chats.isEmpty
+                  ? const Center(child: Text('No chats'))
+                  : ListView.builder(
+                      itemCount: chats.length,
+                      itemBuilder: (context, index) {
+                        final chat = chats[index];
+                        final isActive = chat.id == activeChatId;
+                        return _ChatTile(
+                          chat: chat,
+                          isActive: isActive,
+                          onTap: () => onSelectChat(chat),
+                          onDelete: () => onDeleteChat(chat),
+                        );
+                      },
+                    ),
+            ),
+            const Divider(height: 1),
+            _ProfileSection(profileService: profileService),
+          ],
         ),
       ),
     );
@@ -114,7 +115,8 @@ class _ChatTile extends StatelessWidget {
           style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
         ),
         trailing: IconButton(
-          icon: Icon(Icons.delete_outline, size: 18, color: colors.onSurfaceVariant),
+          icon: Icon(Icons.delete_outline,
+              size: 18, color: colors.onSurfaceVariant),
           onPressed: onDelete,
           tooltip: 'Delete',
         ),
@@ -134,26 +136,24 @@ class _ChatTile extends StatelessWidget {
   }
 }
 
-class _UserMemorySection extends StatefulWidget {
-  final MemoryService memoryService;
+// ─── Communication Profile Section ─────────────────────────────────────────────
 
-  const _UserMemorySection({required this.memoryService});
+class _ProfileSection extends StatefulWidget {
+  final CommunicationProfileService profileService;
+
+  const _ProfileSection({required this.profileService});
 
   @override
-  State<_UserMemorySection> createState() => _UserMemorySectionState();
+  State<_ProfileSection> createState() => _ProfileSectionState();
 }
 
-class _UserMemorySectionState extends State<_UserMemorySection> {
-  void _openEditor() async {
-    final memory = widget.memoryService.getMemory();
+class _ProfileSectionState extends State<_ProfileSection> {
+  void _openManager() async {
     await showDialog<void>(
       context: context,
-      builder: (context) => _MemoryEditorDialog(
-        memory: memory,
-        onSave: (updated) {
-          widget.memoryService.saveMemory(updated);
-          setState(() {});
-        },
+      builder: (context) => _ProfileManagerDialog(
+        profileService: widget.profileService,
+        onChanged: () => setState(() {}),
       ),
     );
     setState(() {});
@@ -162,20 +162,21 @@ class _UserMemorySectionState extends State<_UserMemorySection> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final memory = widget.memoryService.getMemory();
-    final hasAny = widget.memoryService.hasMemory;
+    final profiles = widget.profileService.getProfiles();
+    final activeId = widget.profileService.getActiveProfileId();
 
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.person_outline, size: 16, color: colors.onSurfaceVariant),
+              Icon(Icons.record_voice_over_outlined,
+                  size: 16, color: colors.onSurfaceVariant),
               const SizedBox(width: 6),
               Text(
-                'User Memory',
+                'Профиль общения',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -184,139 +185,428 @@ class _UserMemorySectionState extends State<_UserMemorySection> {
               ),
               const Spacer(),
               IconButton(
-                onPressed: _openEditor,
-                icon: const Icon(Icons.edit_outlined, size: 16),
+                onPressed: _openManager,
+                icon: const Icon(Icons.settings_outlined, size: 16),
                 iconSize: 16,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                tooltip: 'Edit memory',
+                constraints:
+                    const BoxConstraints(minWidth: 28, minHeight: 28),
+                tooltip: 'Управление профилями',
               ),
             ],
           ),
-          if (hasAny) ...[
-            const SizedBox(height: 4),
-            if (memory.profile != null && memory.profile!.isNotEmpty)
-              Text(
-                memory.profile!,
-                style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-          ] else
-            Text(
-              'No memory yet',
-              style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+          const SizedBox(height: 4),
+          DropdownButton<String?>(
+            value:
+                profiles.any((p) => p.id == activeId) ? activeId : null,
+            isExpanded: true,
+            isDense: true,
+            hint: Text(
+              'Нет профиля',
+              style: TextStyle(
+                  fontSize: 13, color: colors.onSurfaceVariant),
             ),
+            items: [
+              DropdownMenuItem<String?>(
+                value: null,
+                child: Text(
+                  'Нет профиля',
+                  style: TextStyle(
+                      fontSize: 13, color: colors.onSurfaceVariant),
+                ),
+              ),
+              ...profiles.map(
+                (p) => DropdownMenuItem<String?>(
+                  value: p.id,
+                  child: Text(
+                    p.name,
+                    style: const TextStyle(fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+            onChanged: (value) {
+              widget.profileService.setActiveProfileId(value);
+              setState(() {});
+            },
+          ),
         ],
       ),
     );
   }
 }
 
-class _MemoryEditorDialog extends StatefulWidget {
-  final UserMemory memory;
-  final ValueChanged<UserMemory> onSave;
+// ─── Profile Manager Dialog ─────────────────────────────────────────────────────
 
-  const _MemoryEditorDialog({required this.memory, required this.onSave});
+class _ProfileManagerDialog extends StatefulWidget {
+  final CommunicationProfileService profileService;
+  final VoidCallback onChanged;
+
+  const _ProfileManagerDialog({
+    required this.profileService,
+    required this.onChanged,
+  });
 
   @override
-  State<_MemoryEditorDialog> createState() => _MemoryEditorDialogState();
+  State<_ProfileManagerDialog> createState() => _ProfileManagerDialogState();
 }
 
-class _MemoryEditorDialogState extends State<_MemoryEditorDialog> {
-  late final TextEditingController _profileCtrl;
-  late final TextEditingController _factsCtrl;
-  late final TextEditingController _instructionsCtrl;
-  late final TextEditingController _glossaryCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _profileCtrl = TextEditingController(text: widget.memory.profile ?? '');
-    _factsCtrl = TextEditingController(text: widget.memory.facts ?? '');
-    _instructionsCtrl =
-        TextEditingController(text: widget.memory.instructions ?? '');
-    _glossaryCtrl = TextEditingController(text: widget.memory.glossary ?? '');
+class _ProfileManagerDialogState extends State<_ProfileManagerDialog> {
+  void _openEditor([CommunicationProfile? existing]) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _ProfileEditorDialog(
+        profileService: widget.profileService,
+        existing: existing,
+      ),
+    );
+    widget.onChanged();
+    setState(() {});
   }
 
-  @override
-  void dispose() {
-    _profileCtrl.dispose();
-    _factsCtrl.dispose();
-    _instructionsCtrl.dispose();
-    _glossaryCtrl.dispose();
-    super.dispose();
+  Future<void> _delete(CommunicationProfile profile) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить профиль?'),
+        content: Text('Профиль «${profile.name}» будет удалён.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    widget.profileService.deleteProfile(profile.id);
+    widget.onChanged();
+    setState(() {});
   }
 
-  void _save() {
-    final updated = widget.memory;
-    updated.profile = _profileCtrl.text.trim().isEmpty
-        ? null
-        : _profileCtrl.text.trim();
-    updated.facts = _factsCtrl.text.trim().isEmpty
-        ? null
-        : _factsCtrl.text.trim();
-    updated.instructions = _instructionsCtrl.text.trim().isEmpty
-        ? null
-        : _instructionsCtrl.text.trim();
-    updated.glossary = _glossaryCtrl.text.trim().isEmpty
-        ? null
-        : _glossaryCtrl.text.trim();
-    widget.onSave(updated);
-    Navigator.of(context).pop();
+  String _shortDesc(CommunicationProfile p) {
+    final tone = CommunicationProfile.toneLabels[p.tone] ?? p.tone;
+    final depth = CommunicationProfile.depthLabels[p.depth] ?? p.depth;
+    final role = CommunicationProfile.roleLabels[p.role] ?? p.role;
+    return '$tone · $depth · $role';
   }
 
   @override
   Widget build(BuildContext context) {
+    final profiles = widget.profileService.getProfiles();
+
     return AlertDialog(
-      title: const Text('User Memory'),
+      title: const Text('Профили общения'),
+      content: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (profiles.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Text('Нет профилей. Создайте первый.'),
+              )
+            else
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: profiles.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final p = profiles[index];
+                    return ListTile(
+                      title: Text(p.name,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w500)),
+                      subtitle: Text(
+                        _shortDesc(p),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined,
+                                size: 18),
+                            tooltip: 'Редактировать',
+                            onPressed: () => _openEditor(p),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline,
+                                size: 18),
+                            tooltip: 'Удалить',
+                            onPressed: () => _delete(p),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _openEditor(),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Создать профиль'),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Закрыть'),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Profile Editor Dialog ──────────────────────────────────────────────────────
+
+class _ProfileEditorDialog extends StatefulWidget {
+  final CommunicationProfileService profileService;
+  final CommunicationProfile? existing;
+
+  const _ProfileEditorDialog({
+    required this.profileService,
+    this.existing,
+  });
+
+  @override
+  State<_ProfileEditorDialog> createState() => _ProfileEditorDialogState();
+}
+
+class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
+  late final TextEditingController _nameCtrl;
+  late String _tone;
+  late String _depth;
+  late String _structure;
+  late String _role;
+  late String _initiative;
+
+  // Memory fields
+  late final TextEditingController _userProfileCtrl;
+  late final TextEditingController _userFactsCtrl;
+  late final TextEditingController _userInstructionsCtrl;
+  late final TextEditingController _userGlossaryCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.existing;
+    _nameCtrl = TextEditingController(text: p?.name ?? '');
+    _tone = p?.tone ?? 'neutral';
+    _depth = p?.depth ?? 'standard';
+    _structure = p?.structure ?? 'no_structure';
+    _role = p?.role ?? 'partner';
+    _initiative = p?.initiative ?? 'reactive';
+
+    _userProfileCtrl =
+        TextEditingController(text: p?.userProfile ?? '');
+    _userFactsCtrl =
+        TextEditingController(text: p?.userFacts ?? '');
+    _userInstructionsCtrl =
+        TextEditingController(text: p?.userInstructions ?? '');
+    _userGlossaryCtrl =
+        TextEditingController(text: p?.userGlossary ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _userProfileCtrl.dispose();
+    _userFactsCtrl.dispose();
+    _userInstructionsCtrl.dispose();
+    _userGlossaryCtrl.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) return;
+
+    final profile = widget.existing ??
+        CommunicationProfile(
+          id: const Uuid().v4(),
+          name: name,
+          updatedAt: DateTime.now(),
+        );
+    profile.name = name;
+    profile.tone = _tone;
+    profile.depth = _depth;
+    profile.structure = _structure;
+    profile.role = _role;
+    profile.initiative = _initiative;
+    profile.updatedAt = DateTime.now();
+
+    final uProfile = _userProfileCtrl.text.trim();
+    final uFacts = _userFactsCtrl.text.trim();
+    final uInstructions = _userInstructionsCtrl.text.trim();
+    final uGlossary = _userGlossaryCtrl.text.trim();
+    profile.userProfile = uProfile.isEmpty ? null : uProfile;
+    profile.userFacts = uFacts.isEmpty ? null : uFacts;
+    profile.userInstructions =
+        uInstructions.isEmpty ? null : uInstructions;
+    profile.userGlossary = uGlossary.isEmpty ? null : uGlossary;
+
+    widget.profileService.saveProfile(profile);
+    Navigator.of(context).pop();
+  }
+
+  DropdownButtonFormField<String> _dropdown({
+    required String label,
+    required String value,
+    required Map<String, String> labels,
+    required ValueChanged<String> onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      initialValue: value,
+      decoration: InputDecoration(
+        labelText: label,
+        border:
+            OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        filled: true,
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      ),
+      borderRadius: BorderRadius.circular(8),
+      items: labels.entries
+          .map((e) =>
+              DropdownMenuItem(value: e.key, child: Text(e.value)))
+          .toList(),
+      onChanged: (v) {
+        if (v != null) onChanged(v);
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isNew = widget.existing == null;
+    return AlertDialog(
+      title: Text(isNew ? 'Новый профиль' : 'Редактировать профиль'),
       content: SizedBox(
         width: 480,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ── Название
               TextField(
-                controller: _profileCtrl,
-                maxLines: 3,
-                minLines: 1,
-                decoration: const InputDecoration(
-                  labelText: 'Profile',
-                  hintText: 'Name, language, preferences...',
-                  border: OutlineInputBorder(),
+                controller: _nameCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Название профиля',
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  filled: true,
+                  isDense: true,
                 ),
               ),
               const SizedBox(height: 12),
+
+              // ── Стиль общения
+              _dropdown(
+                label: 'Тон',
+                value: _tone,
+                labels: CommunicationProfile.toneLabels,
+                onChanged: (v) => setState(() => _tone = v),
+              ),
+              const SizedBox(height: 10),
+              _dropdown(
+                label: 'Глубина',
+                value: _depth,
+                labels: CommunicationProfile.depthLabels,
+                onChanged: (v) => setState(() => _depth = v),
+              ),
+              const SizedBox(height: 10),
+              _dropdown(
+                label: 'Структура',
+                value: _structure,
+                labels: CommunicationProfile.structureLabels,
+                onChanged: (v) => setState(() => _structure = v),
+              ),
+              const SizedBox(height: 10),
+              _dropdown(
+                label: 'Роль',
+                value: _role,
+                labels: CommunicationProfile.roleLabels,
+                onChanged: (v) => setState(() => _role = v),
+              ),
+              const SizedBox(height: 10),
+              _dropdown(
+                label: 'Инициативность',
+                value: _initiative,
+                labels: CommunicationProfile.initiativeLabels,
+                onChanged: (v) => setState(() => _initiative = v),
+              ),
+
+              // ── Память пользователя
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 4),
+              Text(
+                'Память пользователя',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 10),
               TextField(
-                controller: _factsCtrl,
+                controller: _userProfileCtrl,
+                maxLines: 3,
+                minLines: 1,
+                decoration: const InputDecoration(
+                  labelText: 'Профиль',
+                  hintText: 'Имя, язык, предпочтения...',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _userFactsCtrl,
                 maxLines: 4,
                 minLines: 1,
                 decoration: const InputDecoration(
-                  labelText: 'Facts (JSON)',
+                  labelText: 'Факты (JSON)',
                   hintText: '{"profession": "...", "projects": [...]}',
                   border: OutlineInputBorder(),
+                  isDense: true,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               TextField(
-                controller: _instructionsCtrl,
+                controller: _userInstructionsCtrl,
                 maxLines: 3,
                 minLines: 1,
                 decoration: const InputDecoration(
-                  labelText: 'Always-on instructions',
-                  hintText: 'Instructions always included in prompts...',
+                  labelText: 'Всегда-активные инструкции',
+                  hintText: 'Инструкции, всегда включаемые в промпт...',
                   border: OutlineInputBorder(),
+                  isDense: true,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               TextField(
-                controller: _glossaryCtrl,
+                controller: _userGlossaryCtrl,
                 maxLines: 3,
                 minLines: 1,
                 decoration: const InputDecoration(
-                  labelText: 'Glossary (JSON)',
-                  hintText: '{"term": "definition", ...}',
+                  labelText: 'Глоссарий (JSON)',
+                  hintText: '{"термин": "определение", ...}',
                   border: OutlineInputBorder(),
+                  isDense: true,
                 ),
               ),
             ],
@@ -326,11 +616,11 @@ class _MemoryEditorDialogState extends State<_MemoryEditorDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: const Text('Отмена'),
         ),
         FilledButton(
           onPressed: _save,
-          child: const Text('Save'),
+          child: const Text('Сохранить'),
         ),
       ],
     );

@@ -4,11 +4,13 @@ import '../models/chat.dart';
 import '../models/model_config.dart';
 import '../services/api_service.dart';
 import '../services/chat_repository.dart';
+import '../services/communication_profile_service.dart';
 import '../services/memory_service.dart';
 
 class ChatController extends ChangeNotifier {
   final ChatRepository repository;
   final MemoryService memoryService;
+  final CommunicationProfileService profileService;
   final ApiService apiService;
   final Stopwatch stopwatch = Stopwatch();
 
@@ -89,6 +91,7 @@ class ChatController extends ChangeNotifier {
   ChatController({
     required this.repository,
     required this.memoryService,
+    required this.profileService,
     ApiService? apiService,
   }) : apiService = apiService ?? ApiService() {
     loadChats();
@@ -150,19 +153,24 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Формирует единый системный промпт: user prompt + LTM + working memory.
+  /// Формирует единый системный промпт: профиль (со встроенной памятью) + user prompt + working memory.
   String buildSystemPrompt() {
     final chat = activeChat!;
     final parts = <String>[];
 
+    // 1. Профиль общения (первый; включает стиль + LTM если профиль активен)
+    final activeProfile = profileService.getActiveProfile();
+    if (activeProfile != null) {
+      parts.add(profileService.buildProfilePrompt(activeProfile));
+    }
+
+    // 2. Пользовательский system prompt чата
     final userPrompt = settingsEnabled
         ? systemPromptController.text.trim()
         : (chat.systemPrompt ?? '');
     if (userPrompt.isNotEmpty) parts.add(userPrompt);
 
-    final ltm = memoryService.buildMemoryPrompt();
-    if (ltm.isNotEmpty) parts.add(ltm);
-
+    // 3. Working memory (per-chat)
     if (_workingMemoryEnabled &&
         chat.workingMemory != null &&
         chat.workingMemory!.isNotEmpty) {
@@ -253,41 +261,45 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Обновляет долговременную память пользователя.
+  /// Обновляет долговременную память активного профиля.
+  /// Если профиль не выбран — memory tracking не выполняется.
   Future<void> _updateLongTermMemory() async {
     if (activeChat == null) return;
+    final activeProfile = profileService.getActiveProfile();
+    if (activeProfile == null) return;
+
     final n = activeChat!.slidingWindowSize;
     final recentMessages = messages.length > n
         ? messages.sublist(messages.length - n)
         : messages;
-    final existing = memoryService.getMemory();
+
     final extracted = await apiService.extractUserMemory(
       recentMessages,
-      existingProfile: existing.profile,
-      existingFacts: existing.facts,
-      existingInstructions: existing.instructions,
-      existingGlossary: existing.glossary,
+      existingProfile: activeProfile.userProfile,
+      existingFacts: activeProfile.userFacts,
+      existingInstructions: activeProfile.userInstructions,
+      existingGlossary: activeProfile.userGlossary,
     );
 
     bool changed = false;
     if (extracted['profile'] != null) {
-      existing.profile = extracted['profile'];
+      activeProfile.userProfile = extracted['profile'];
       changed = true;
     }
     if (extracted['facts'] != null) {
-      existing.facts = extracted['facts'];
+      activeProfile.userFacts = extracted['facts'];
       changed = true;
     }
     if (extracted['instructions'] != null) {
-      existing.instructions = extracted['instructions'];
+      activeProfile.userInstructions = extracted['instructions'];
       changed = true;
     }
     if (extracted['glossary'] != null) {
-      existing.glossary = extracted['glossary'];
+      activeProfile.userGlossary = extracted['glossary'];
       changed = true;
     }
     if (changed) {
-      memoryService.saveMemory(existing);
+      profileService.saveProfile(activeProfile);
       notifyListeners();
     }
   }

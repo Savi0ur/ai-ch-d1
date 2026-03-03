@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ai_api_app_claude/screens/chat_controller.dart';
 import 'package:ai_api_app_claude/services/chat_repository.dart';
+import 'package:ai_api_app_claude/services/communication_profile_service.dart';
 import 'package:ai_api_app_claude/services/memory_service.dart';
 import 'package:ai_api_app_claude/services/api_service.dart';
 import 'package:ai_api_app_claude/models/chat.dart';
+import 'package:ai_api_app_claude/models/communication_profile.dart';
 import '../helpers/hive_test_helper.dart';
 
 /// Фейковый ApiService — не делает HTTP-запросов.
@@ -66,10 +68,24 @@ class FakeApiService extends ApiService {
   }
 }
 
-ChatController makeController({FakeApiService? api}) {
+/// Фейковый CommunicationProfileService.
+class FakeCommunicationProfileService extends CommunicationProfileService {
+  CommunicationProfile? _activeProfile;
+
+  void setActive(CommunicationProfile? p) => _activeProfile = p;
+
+  @override
+  CommunicationProfile? getActiveProfile() => _activeProfile;
+}
+
+ChatController makeController({
+  FakeApiService? api,
+  FakeCommunicationProfileService? profileService,
+}) {
   return ChatController(
     repository: ChatRepository(),
     memoryService: MemoryService(),
+    profileService: profileService ?? FakeCommunicationProfileService(),
     apiService: api ?? FakeApiService(),
   );
 }
@@ -297,6 +313,87 @@ void main() {
       ctrl.workingMemoryEnabled = false;
 
       expect(ctrl.buildSystemPrompt(), isNot(contains('secret task')));
+    });
+
+    test('включает профиль общения если активен', () {
+      final profileSvc = FakeCommunicationProfileService();
+      profileSvc.setActive(CommunicationProfile(
+        id: 'p1',
+        name: 'Test',
+        tone: 'friendly',
+        updatedAt: DateTime.now(),
+      ));
+      final ctrl = makeController(profileService: profileSvc);
+      final repo = ChatRepository();
+      final chat = repo.createChat(model: 'openai/gpt-4o-mini');
+      ctrl.selectChat(chat);
+
+      expect(ctrl.buildSystemPrompt(), contains('[Communication style]'));
+    });
+
+    test('не включает профиль если activeProfile = null', () {
+      final profileSvc = FakeCommunicationProfileService();
+      // не устанавливаем активный профиль
+      final ctrl = makeController(profileService: profileSvc);
+      final repo = ChatRepository();
+      final chat = repo.createChat(model: 'openai/gpt-4o-mini');
+      ctrl.selectChat(chat);
+
+      expect(
+        ctrl.buildSystemPrompt(),
+        isNot(contains('[Communication style]')),
+      );
+    });
+
+    test('профиль идёт первым в системном промпте', () {
+      final profileSvc = FakeCommunicationProfileService();
+      profileSvc.setActive(CommunicationProfile(
+        id: 'p1',
+        name: 'Test',
+        tone: 'strict',
+        updatedAt: DateTime.now(),
+      ));
+      final ctrl = makeController(profileService: profileSvc);
+      final repo = ChatRepository();
+      final chat =
+          repo.createChat(model: 'openai/gpt-4o-mini', systemPrompt: 'Be brief');
+      ctrl.selectChat(chat);
+
+      final prompt = ctrl.buildSystemPrompt();
+      final profileIdx = prompt.indexOf('[Communication style]');
+      final userIdx = prompt.indexOf('Be brief');
+      expect(profileIdx, lessThan(userIdx));
+    });
+
+    test('LTM из профиля включается в промпт', () {
+      final profileSvc = FakeCommunicationProfileService();
+      profileSvc.setActive(CommunicationProfile(
+        id: 'p1',
+        name: 'Test',
+        updatedAt: DateTime.now(),
+        userProfile: 'Иван, разработчик',
+        userInstructions: 'Отвечай кратко',
+      ));
+      final ctrl = makeController(profileService: profileSvc);
+      final repo = ChatRepository();
+      final chat = repo.createChat(model: 'openai/gpt-4o-mini');
+      ctrl.selectChat(chat);
+
+      final prompt = ctrl.buildSystemPrompt();
+      expect(prompt, contains('Иван, разработчик'));
+      expect(prompt, contains('Отвечай кратко'));
+    });
+
+    test('LTM не включается если профиль не активен', () {
+      final profileSvc = FakeCommunicationProfileService();
+      final ctrl = makeController(profileService: profileSvc);
+      final repo = ChatRepository();
+      final chat = repo.createChat(model: 'openai/gpt-4o-mini');
+      ctrl.selectChat(chat);
+
+      final prompt = ctrl.buildSystemPrompt();
+      expect(prompt, isNot(contains('[Known user profile]')));
+      expect(prompt, isNot(contains('[Always-on instructions]')));
     });
   });
 
