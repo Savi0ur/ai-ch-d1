@@ -9,7 +9,7 @@ import '../services/memory_service.dart';
 class ChatController extends ChangeNotifier {
   final ChatRepository repository;
   final MemoryService memoryService;
-  final ApiService apiService = ApiService();
+  final ApiService apiService;
   final Stopwatch stopwatch = Stopwatch();
 
   // Settings controllers (owned by controller, disposed here)
@@ -86,7 +86,11 @@ class ChatController extends ChangeNotifier {
 
   StreamSubscription<String>? _streamSubscription;
 
-  ChatController({required this.repository, required this.memoryService}) {
+  ChatController({
+    required this.repository,
+    required this.memoryService,
+    ApiService? apiService,
+  }) : apiService = apiService ?? ApiService() {
     loadChats();
   }
 
@@ -147,7 +151,7 @@ class ChatController extends ChangeNotifier {
   }
 
   /// Формирует единый системный промпт: user prompt + LTM + working memory.
-  String _buildSystemPrompt() {
+  String buildSystemPrompt() {
     final chat = activeChat!;
     final parts = <String>[];
 
@@ -169,7 +173,7 @@ class ChatController extends ChangeNotifier {
   }
 
   /// Формирует список сообщений для API-запроса в зависимости от стратегии контекста.
-  List<ChatMessage> _buildApiMessages() {
+  List<ChatMessage> buildApiMessages() {
     final chat = activeChat!;
 
     List<ChatMessage> base;
@@ -446,12 +450,12 @@ class ChatController extends ChangeNotifier {
       // Управляем контекстом в зависимости от выбранной стратегии
       await _manageContext();
 
-      final apiMessages = _buildApiMessages();
+      final apiMessages = buildApiMessages();
 
       final stream = apiService.sendMessageStream(
         apiMessages,
         model: selectedModel,
-        systemPrompt: _buildSystemPrompt(),
+        systemPrompt: buildSystemPrompt(),
         maxTokens: settingsEnabled
             ? int.tryParse(maxTokensController.text.trim())
             : null,
