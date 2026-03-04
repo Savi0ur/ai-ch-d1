@@ -8,6 +8,7 @@ class ChatDrawer extends StatelessWidget {
   final List<Chat> chats;
   final String? activeChatId;
   final VoidCallback onNewChat;
+  final VoidCallback onNewTask;
   final ValueChanged<Chat> onSelectChat;
   final ValueChanged<Chat> onDeleteChat;
   final CommunicationProfileService profileService;
@@ -17,6 +18,7 @@ class ChatDrawer extends StatelessWidget {
     required this.chats,
     required this.activeChatId,
     required this.onNewChat,
+    required this.onNewTask,
     required this.onSelectChat,
     required this.onDeleteChat,
     required this.profileService,
@@ -34,7 +36,7 @@ class ChatDrawer extends StatelessWidget {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton(
@@ -45,6 +47,23 @@ class ChatDrawer extends StatelessWidget {
                       Icon(Icons.add, size: 20),
                       SizedBox(width: 8),
                       Text('New Chat'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: onNewTask,
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.task_alt, size: 20),
+                      SizedBox(width: 8),
+                      Text('New Task'),
                     ],
                   ),
                 ),
@@ -101,9 +120,11 @@ class _ChatTile extends StatelessWidget {
       child: ListTile(
         selected: isActive,
         selectedTileColor: colors.primaryContainer.withValues(alpha: 0.3),
-        leading: isBranch
-            ? Icon(Icons.call_split, size: 18, color: colors.onSurfaceVariant)
-            : null,
+        leading: chat.isTaskMode
+            ? Icon(Icons.task_alt, size: 18, color: colors.primary)
+            : isBranch
+                ? Icon(Icons.call_split, size: 18, color: colors.onSurfaceVariant)
+                : null,
         title: Text(
           chat.title,
           maxLines: 1,
@@ -111,7 +132,7 @@ class _ChatTile extends StatelessWidget {
           style: const TextStyle(fontSize: 14),
         ),
         subtitle: Text(
-          _formatDate(chat.updatedAt),
+          chat.isTaskMode ? _phaseLabel(chat.taskPhase) : _formatDate(chat.updatedAt),
           style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
         ),
         trailing: IconButton(
@@ -123,6 +144,16 @@ class _ChatTile extends StatelessWidget {
         onTap: onTap,
       ),
     );
+  }
+
+  static String _phaseLabel(String? phase) {
+    const labels = {
+      'planning': 'Планирование',
+      'execution': 'Выполнение',
+      'validation': 'Валидация',
+      'done': 'Готово',
+    };
+    return labels[phase] ?? '';
   }
 
   String _formatDate(DateTime date) {

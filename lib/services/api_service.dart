@@ -411,6 +411,66 @@ class ApiService {
     }
   }
 
+  /// Extracts the result of a task phase from conversation messages.
+  Future<String> extractPhaseResult(
+    List<ChatMessage> messages,
+    String phase,
+  ) async {
+    final url = Uri.parse('$_baseUrl/chat/completions');
+
+    final systemPrompts = {
+      'planning':
+          'Извлеки итоговый план и требования из диалога. Верни краткое структурированное резюме.',
+      'execution':
+          'Извлеки результаты выполнения. Что сделано, ключевые артефакты, решения.',
+      'validation':
+          'Извлеки выводы валидации. Что прошло проверку, что нет, рекомендации.',
+    };
+
+    final userContent = StringBuffer();
+    userContent.writeln('Messages:');
+    for (final msg in messages) {
+      userContent.writeln('${msg.role}: ${msg.content}');
+    }
+
+    final body = <String, dynamic>{
+      'model': _summarizationModel,
+      'messages': [
+        {
+          'role': 'system',
+          'content': systemPrompts[phase] ?? 'Summarize the conversation.',
+        },
+        {
+          'role': 'user',
+          'content': userContent.toString(),
+        },
+      ],
+      'stream': false,
+    };
+
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $_apiKey',
+    };
+
+    final response = await http.post(
+      url,
+      headers: headers,
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+          'Extract phase result API Error: ${response.statusCode} ${response.body}');
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final choices = json['choices'] as List<dynamic>;
+    final message =
+        (choices[0] as Map<String, dynamic>)['message'] as Map<String, dynamic>;
+    return message['content'] as String;
+  }
+
   /// Extracts key facts from recent messages as a JSON string (for Sticky Facts strategy).
   Future<String> extractFacts(
     List<ChatMessage> recentMessages, {

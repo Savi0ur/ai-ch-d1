@@ -15,6 +15,9 @@ class Chat extends HiveObject {
   String? parentChatId;       // ID родительского чата (для веток)
   int? branchMessageIndex;    // Индекс сообщения-checkpoint (для веток)
   String? workingMemory;      // JSON: структура текущей задачи (goal, steps, etc.)
+  bool isTaskMode;            // false = обычный чат, true = task mode
+  String? taskPhase;          // 'planning' | 'execution' | 'validation' | 'done'
+  String? phaseResults;       // JSON: {"planning": "...", "execution": "...", "validation": "..."}
 
   Chat({
     required this.id,
@@ -31,6 +34,9 @@ class Chat extends HiveObject {
     this.parentChatId,
     this.branchMessageIndex,
     this.workingMemory,
+    this.isTaskMode = false,
+    this.taskPhase,
+    this.phaseResults,
   });
 }
 
@@ -40,6 +46,7 @@ class ChatMessage extends HiveObject {
   String role; // 'user' | 'assistant' | 'system'
   String content;
   DateTime timestamp;
+  bool isAutoTrigger; // true = сообщение сгенерировано системой при переходе фазы
 
   ChatMessage({
     required this.id,
@@ -47,6 +54,7 @@ class ChatMessage extends HiveObject {
     required this.role,
     required this.content,
     required this.timestamp,
+    this.isAutoTrigger = false,
   });
 }
 
@@ -75,13 +83,16 @@ class ChatAdapter extends TypeAdapter<Chat> {
       parentChatId: fields[11] as String?,
       branchMessageIndex: fields[12] as int?,
       workingMemory: fields[13] as String?,
+      isTaskMode: (fields[14] as bool?) ?? false,
+      taskPhase: fields[15] as String?,
+      phaseResults: fields[16] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Chat obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(17)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -109,7 +120,13 @@ class ChatAdapter extends TypeAdapter<Chat> {
       ..writeByte(12)
       ..write(obj.branchMessageIndex)
       ..writeByte(13)
-      ..write(obj.workingMemory);
+      ..write(obj.workingMemory)
+      ..writeByte(14)
+      ..write(obj.isTaskMode)
+      ..writeByte(15)
+      ..write(obj.taskPhase)
+      ..writeByte(16)
+      ..write(obj.phaseResults);
   }
 }
 
@@ -129,13 +146,14 @@ class ChatMessageAdapter extends TypeAdapter<ChatMessage> {
       role: fields[2] as String,
       content: fields[3] as String,
       timestamp: fields[4] as DateTime,
+      isAutoTrigger: (fields[5] as bool?) ?? false,
     );
   }
 
   @override
   void write(BinaryWriter writer, ChatMessage obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(6)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -145,6 +163,8 @@ class ChatMessageAdapter extends TypeAdapter<ChatMessage> {
       ..writeByte(3)
       ..write(obj.content)
       ..writeByte(4)
-      ..write(obj.timestamp);
+      ..write(obj.timestamp)
+      ..writeByte(5)
+      ..write(obj.isAutoTrigger);
   }
 }

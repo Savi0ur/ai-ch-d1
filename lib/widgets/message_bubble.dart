@@ -23,8 +23,34 @@ class _MessageBubbleState extends State<MessageBubble> {
   @override
   Widget build(BuildContext context) {
     final isUser = widget.message.role == 'user';
+    final isAutoTrigger = widget.message.isAutoTrigger;
     final colors = Theme.of(context).colorScheme;
     final showBranchButton = widget.onBranch != null && _hovered && !widget.isStreaming;
+
+    // Авто-триггер фазы — компактный системный маркер по центру
+    if (isAutoTrigger) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+        child: Row(
+          children: [
+            Expanded(child: Divider(color: colors.outlineVariant, height: 1)),
+            const SizedBox(width: 8),
+            Icon(Icons.arrow_forward, size: 12, color: colors.onSurfaceVariant),
+            const SizedBox(width: 4),
+            Text(
+              widget.message.content,
+              style: TextStyle(
+                fontSize: 11,
+                color: colors.onSurfaceVariant,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Divider(color: colors.outlineVariant, height: 1)),
+          ],
+        ),
+      );
+    }
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,

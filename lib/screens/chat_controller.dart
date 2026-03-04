@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models/chat.dart';
 import '../models/model_config.dart';
@@ -83,6 +84,23 @@ class ChatController extends ChangeNotifier {
   String streamingContent = '';
   String? error;
 
+  // Task mode
+  bool _pendingTaskMode = false;
+  bool isExtractingPhaseResult = false;
+
+  bool get isTaskMode => activeChat?.isTaskMode ?? false;
+  String? get taskPhase => activeChat?.taskPhase;
+  Map<String, String> get parsedPhaseResults {
+    final raw = activeChat?.phaseResults;
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      return map.map((k, v) => MapEntry(k, v.toString()));
+    } catch (_) {
+      return {};
+    }
+  }
+
   /// Грубая оценка токенов: ~1 токен на 3 символа.
   static int estimateTokens(String text) => text.length ~/ 3;
 
@@ -107,6 +125,18 @@ class ChatController extends ChangeNotifier {
     messages = [];
     streamingContent = '';
     error = null;
+    _pendingTaskMode = false;
+    apiService.clearLogs();
+    _resetSettings();
+    notifyListeners();
+  }
+
+  void createNewTaskChat() {
+    activeChat = null;
+    messages = [];
+    streamingContent = '';
+    error = null;
+    _pendingTaskMode = true;
     apiService.clearLogs();
     _resetSettings();
     notifyListeners();
@@ -120,6 +150,7 @@ class ChatController extends ChangeNotifier {
     _slidingWindowSize = chat.slidingWindowSize;
     streamingContent = '';
     error = null;
+    _pendingTaskMode = false;
     apiService.clearLogs();
     _resetSettings();
     if (chat.systemPrompt != null && chat.systemPrompt!.isNotEmpty) {
@@ -158,6 +189,12 @@ class ChatController extends ChangeNotifier {
     final chat = activeChat!;
     final parts = <String>[];
 
+    // 0. Task mode: фазовый промпт
+    if (chat.isTaskMode) {
+      final phasePrompt = _buildPhaseSystemPrompt();
+      if (phasePrompt.isNotEmpty) parts.add(phasePrompt);
+    }
+
     // 1. Профиль общения (первый; включает стиль + LTM если профиль активен)
     final activeProfile = profileService.getActiveProfile();
     if (activeProfile != null) {
@@ -170,8 +207,9 @@ class ChatController extends ChangeNotifier {
         : (chat.systemPrompt ?? '');
     if (userPrompt.isNotEmpty) parts.add(userPrompt);
 
-    // 3. Working memory (per-chat)
-    if (_workingMemoryEnabled &&
+    // 3. Working memory (per-chat) — не в task mode
+    if (!chat.isTaskMode &&
+        _workingMemoryEnabled &&
         chat.workingMemory != null &&
         chat.workingMemory!.isNotEmpty) {
       parts.add('Current task structure (working memory):\n${chat.workingMemory}');
@@ -180,9 +218,36 @@ class ChatController extends ChangeNotifier {
     return parts.join('\n\n');
   }
 
+  String _buildPhaseSystemPrompt() {
+    final results = parsedPhaseResults;
+    switch (activeChat?.taskPhase) {
+      case 'planning':
+        return 'Ты помогаешь спланировать задачу. Уточняй требования, разбивай на шаги, формируй план. НЕ выполняй — только планируй.';
+      case 'execution':
+        final plan = results['planning'] ?? '';
+        return 'Выполняй задачу по плану:\n$plan\n\nФокус на реализации.';
+      case 'validation':
+        final plan = results['planning'] ?? '';
+        final exec = results['execution'] ?? '';
+        return 'Проведи ревью результатов:\nПлан:\n$plan\nРезультат:\n$exec\n\nПроверь соответствие плану, найди проблемы.';
+      case 'done':
+        final plan = results['planning'] ?? '';
+        final exec = results['execution'] ?? '';
+        final val = results['validation'] ?? '';
+        return 'Задача завершена.\nПлан:\n$plan\nРезультат:\n$exec\nВалидация:\n$val';
+      default:
+        return '';
+    }
+  }
+
   /// Формирует список сообщений для API-запроса в зависимости от стратегии контекста.
   List<ChatMessage> buildApiMessages() {
     final chat = activeChat!;
+
+    // Task mode: только сообщения текущей фазы
+    if (chat.isTaskMode) {
+      return messages.sublist(chat.summarizedUpTo);
+    }
 
     List<ChatMessage> base;
     switch (chat.contextStrategy) {
@@ -425,7 +490,7 @@ class ChatController extends ChangeNotifier {
     }
   }
 
-  Future<void> sendMessage(String text) async {
+  Future<void> sendMessage(String text, {bool isAutoTrigger = false}) async {
     if (text.isEmpty || isStreaming) return;
 
     // Создаём чат если нужно
@@ -439,6 +504,11 @@ class ChatController extends ChangeNotifier {
       );
       activeChat!.contextStrategy = _contextStrategy;
       activeChat!.slidingWindowSize = _slidingWindowSize;
+      if (_pendingTaskMode) {
+        activeChat!.isTaskMode = true;
+        activeChat!.taskPhase = 'planning';
+        _pendingTaskMode = false;
+      }
       repository.updateChat(activeChat!);
     }
 
@@ -447,6 +517,7 @@ class ChatController extends ChangeNotifier {
       chatId: activeChat!.id,
       role: 'user',
       content: text,
+      isAutoTrigger: isAutoTrigger,
     );
 
     messages.add(userMsg);
@@ -530,6 +601,63 @@ class ChatController extends ChangeNotifier {
       error = e.toString();
       isStreaming = false;
       notifyListeners();
+    }
+  }
+
+  /// State machine: переход к следующей фазе задачи.
+  Future<void> advanceTaskPhase() async {
+    final chat = activeChat;
+    if (chat == null || !chat.isTaskMode || chat.taskPhase == 'done') return;
+
+    isExtractingPhaseResult = true;
+    notifyListeners();
+
+    String? nextPhase;
+    try {
+      final currentPhase = chat.taskPhase!;
+
+      // Сообщения текущей фазы
+      final phaseMessages = messages.sublist(chat.summarizedUpTo);
+
+      // Извлекаем результат фазы
+      final result = await apiService.extractPhaseResult(phaseMessages, currentPhase);
+
+      // Сохраняем результат в phaseResults JSON
+      final results = parsedPhaseResults;
+      results[currentPhase] = result;
+      chat.phaseResults = jsonEncode(results);
+
+      // Определяем следующую фазу
+      const phases = ['planning', 'execution', 'validation', 'done'];
+      final currentIndex = phases.indexOf(currentPhase);
+      nextPhase = phases[currentIndex + 1];
+
+      // Изоляция контекста: сдвигаем summarizedUpTo
+      chat.summarizedUpTo = messages.length;
+      chat.summary = null;
+      chat.facts = null;
+      chat.workingMemory = null;
+
+      // Переключаем фазу
+      chat.taskPhase = nextPhase;
+      repository.updateChat(chat);
+
+      // Перезагружаем messages
+      messages = repository.getMessages(chat.id);
+    } finally {
+      isExtractingPhaseResult = false;
+      notifyListeners();
+    }
+
+    // Автоматически запускаем следующую фазу
+    const phaseTriggers = {
+      'execution': 'Приступи к выполнению задачи строго по утверждённому плану.',
+      'validation': 'Проведи валидацию: проверь результаты выполнения на соответствие плану, найди проблемы и дай рекомендации.',
+      'done': 'Зафиксируй финальный результат задачи: итоговое резюме, что сделано, ключевые артефакты и выводы.',
+    };
+    final trigger = phaseTriggers[nextPhase];
+    if (trigger != null) {
+      await sendMessage(trigger, isAutoTrigger: true);
     }
   }
 

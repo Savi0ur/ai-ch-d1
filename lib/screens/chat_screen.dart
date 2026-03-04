@@ -8,6 +8,7 @@ import '../widgets/chat_drawer.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/request_log_panel.dart';
+import '../widgets/task_phase_bar.dart';
 import '../widgets/working_memory_panel.dart';
 import 'chat_controller.dart';
 
@@ -55,6 +56,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _onCreateNewChat() {
     _ctrl.createNewChat();
+    _closeDrawerIfOpen();
+  }
+
+  void _onCreateNewTask() {
+    _ctrl.createNewTaskChat();
     _closeDrawerIfOpen();
   }
 
@@ -368,7 +374,9 @@ class _ChatScreenState extends State<ChatScreen> {
           key: _scaffoldKey,
           appBar: AppBar(
             title: Text(
-              _ctrl.activeChat?.title ?? 'AI Chat',
+              _ctrl.isTaskMode
+                  ? '${_ctrl.activeChat?.title ?? 'Task'} — ${_phaseLabel(_ctrl.taskPhase)}'
+                  : (_ctrl.activeChat?.title ?? 'AI Chat'),
               overflow: TextOverflow.ellipsis,
             ),
             leading: isWide
@@ -413,6 +421,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     chats: _ctrl.chats,
                     activeChatId: _ctrl.activeChat?.id,
                     onNewChat: _onCreateNewChat,
+                    onNewTask: _onCreateNewTask,
                     onSelectChat: _onSelectChat,
                     onDeleteChat: _onDeleteChat,
                     profileService: widget.profileService,
@@ -425,6 +434,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   chats: _ctrl.chats,
                   activeChatId: _ctrl.activeChat?.id,
                   onNewChat: _onCreateNewChat,
+                  onNewTask: _onCreateNewTask,
                   onSelectChat: _onSelectChat,
                   onDeleteChat: _onDeleteChat,
                   profileService: widget.profileService,
@@ -434,10 +444,21 @@ class _ChatScreenState extends State<ChatScreen> {
               Expanded(
                 child: Column(
                   children: [
+                    if (_ctrl.isTaskMode)
+                      TaskPhaseBar(
+                        currentPhase: _ctrl.taskPhase ?? 'planning',
+                        phaseResults: _ctrl.parsedPhaseResults,
+                        isExtracting: _ctrl.isExtractingPhaseResult,
+                        canAdvance: !_ctrl.isStreaming &&
+                            !_ctrl.isExtractingPhaseResult &&
+                            _ctrl.taskPhase != 'done' &&
+                            _ctrl.messages.length > (_ctrl.activeChat?.summarizedUpTo ?? 0),
+                        onAdvance: () => _ctrl.advanceTaskPhase(),
+                      ),
                     Expanded(child: _buildMessageList()),
                     if (_ctrl.isSummarizing) _buildSummarizingBanner(),
                     if (_ctrl.error != null) _buildErrorBanner(),
-                    WorkingMemoryPanel(
+                    if (!_ctrl.isTaskMode) WorkingMemoryPanel(
                         workingMemory: _ctrl.activeChat?.workingMemory,
                         isUpdating: _ctrl.isUpdatingMemory,
                         enabled: _ctrl.workingMemoryEnabled,
@@ -468,18 +489,21 @@ class _ChatScreenState extends State<ChatScreen> {
     final hasStreaming = _ctrl.isStreaming && _ctrl.streamingContent.isNotEmpty;
 
     if (allMessages.isEmpty && !hasStreaming) {
+      final isTask = _ctrl.isTaskMode;
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.chat_bubble_outline,
+              isTask ? Icons.task_alt : Icons.chat_bubble_outline,
               size: 64,
               color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
             ),
             const SizedBox(height: 16),
             Text(
-              'Start a new conversation',
+              isTask && _ctrl.taskPhase == 'planning'
+                  ? 'Опишите задачу для начала планирования'
+                  : 'Start a new conversation',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -539,6 +563,16 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
     );
+  }
+
+  static String _phaseLabel(String? phase) {
+    const labels = {
+      'planning': 'Планирование',
+      'execution': 'Выполнение',
+      'validation': 'Валидация',
+      'done': 'Готово',
+    };
+    return labels[phase] ?? phase ?? '';
   }
 
   Widget _buildErrorBanner() {

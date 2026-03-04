@@ -27,14 +27,16 @@ class ChatRepository {
     return _chatsBox.get(id);
   }
 
-  Chat createChat({required String model, String? systemPrompt}) {
+  Chat createChat({required String model, String? systemPrompt, bool isTaskMode = false}) {
     final chat = Chat(
       id: _uuid.v4(),
-      title: 'New Chat',
+      title: isTaskMode ? 'New Task' : 'New Chat',
       model: model,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
       systemPrompt: systemPrompt,
+      isTaskMode: isTaskMode,
+      taskPhase: isTaskMode ? 'planning' : null,
     );
     _chatsBox.put(chat.id, chat);
     return chat;
@@ -65,6 +67,7 @@ class ChatRepository {
     required String chatId,
     required String role,
     required String content,
+    bool isAutoTrigger = false,
   }) {
     final message = ChatMessage(
       id: _uuid.v4(),
@@ -72,14 +75,15 @@ class ChatRepository {
       role: role,
       content: content,
       timestamp: DateTime.now(),
+      isAutoTrigger: isAutoTrigger,
     );
     _messagesBox.put(message.id, message);
 
-    // Update chat's updatedAt and title if first user message
+    // Update chat's updatedAt and title if first user message (not auto-trigger)
     final chat = getChat(chatId);
     if (chat != null) {
       chat.updatedAt = DateTime.now();
-      if (role == 'user' && chat.title == 'New Chat') {
+      if (role == 'user' && !isAutoTrigger && (chat.title == 'New Chat' || chat.title == 'New Task')) {
         chat.title = content.length > 30 ? '${content.substring(0, 30)}...' : content;
       }
       updateChat(chat);
