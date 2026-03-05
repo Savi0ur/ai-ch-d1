@@ -350,6 +350,17 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _showInvariantsEditor() {
+    showDialog(
+      context: context,
+      builder: (context) => _InvariantsEditorDialog(
+        invariants: _ctrl.parsedTaskInvariants,
+        onAdd: (text) => _ctrl.addTaskInvariant(text),
+        onRemove: (index) => _ctrl.removeTaskInvariant(index),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _ctrl.dispose();
@@ -454,6 +465,8 @@ class _ChatScreenState extends State<ChatScreen> {
                             _ctrl.taskPhase != 'done' &&
                             _ctrl.messages.length > (_ctrl.activeChat?.summarizedUpTo ?? 0),
                         onAdvance: () => _ctrl.advanceTaskPhase(),
+                        invariants: _ctrl.parsedTaskInvariants,
+                        onEditInvariants: _showInvariantsEditor,
                       ),
                     Expanded(child: _buildMessageList()),
                     if (_ctrl.isSummarizing) _buildSummarizingBanner(),
@@ -502,7 +515,7 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(height: 16),
             Text(
               isTask && _ctrl.taskPhase == 'planning'
-                  ? 'Опишите задачу для начала планирования'
+                  ? 'Describe the task to start planning'
                   : 'Start a new conversation',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -567,10 +580,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   static String _phaseLabel(String? phase) {
     const labels = {
-      'planning': 'Планирование',
-      'execution': 'Выполнение',
-      'validation': 'Валидация',
-      'done': 'Готово',
+      'planning': 'Planning',
+      'execution': 'Execution',
+      'validation': 'Validation',
+      'done': 'Done',
     };
     return labels[phase] ?? phase ?? '';
   }
@@ -602,6 +615,134 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _InvariantsEditorDialog extends StatefulWidget {
+  final List<String> invariants;
+  final void Function(String) onAdd;
+  final void Function(int) onRemove;
+
+  const _InvariantsEditorDialog({
+    required this.invariants,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  @override
+  State<_InvariantsEditorDialog> createState() =>
+      _InvariantsEditorDialogState();
+}
+
+class _InvariantsEditorDialogState extends State<_InvariantsEditorDialog> {
+  final _textController = TextEditingController();
+  late List<String> _invariants;
+
+  @override
+  void initState() {
+    super.initState();
+    _invariants = List.from(widget.invariants);
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  void _add() {
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+    widget.onAdd(text);
+    setState(() {
+      _invariants = List.from(_invariants)..add(text);
+      _textController.clear();
+    });
+  }
+
+  void _remove(int index) {
+    widget.onRemove(index);
+    setState(() {
+      _invariants = List.from(_invariants)..removeAt(index);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Task invariants'),
+      content: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Hard constraints the assistant must follow in every phase.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _textController,
+                    decoration: const InputDecoration(
+                      hintText: 'New invariant...',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _add(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _add,
+                  child: const Text('Add'),
+                ),
+              ],
+            ),
+            if (_invariants.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 240),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _invariants.length,
+                  separatorBuilder: (ctx, i) => const Divider(height: 1),
+                  itemBuilder: (context, index) => ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: Icon(
+                      Icons.lock_outline,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.tertiary,
+                    ),
+                    title: Text(
+                      _invariants[index],
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      onPressed: () => _remove(index),
+                      tooltip: 'Delete',
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
     );
   }
 }

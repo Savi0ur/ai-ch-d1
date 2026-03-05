@@ -18,6 +18,7 @@ class Chat extends HiveObject {
   bool isTaskMode;            // false = обычный чат, true = task mode
   String? taskPhase;          // 'planning' | 'execution' | 'validation' | 'done'
   String? phaseResults;       // JSON: {"planning": "...", "execution": "...", "validation": "..."}
+  String? taskInvariants;     // JSON: ["инвариант 1", "инвариант 2", ...]
 
   Chat({
     required this.id,
@@ -37,6 +38,7 @@ class Chat extends HiveObject {
     this.isTaskMode = false,
     this.taskPhase,
     this.phaseResults,
+    this.taskInvariants,
   });
 }
 
@@ -86,13 +88,14 @@ class ChatAdapter extends TypeAdapter<Chat> {
       isTaskMode: (fields[14] as bool?) ?? false,
       taskPhase: fields[15] as String?,
       phaseResults: fields[16] as String?,
+      taskInvariants: fields[17] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Chat obj) {
     writer
-      ..writeByte(17)
+      ..writeByte(18)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -126,7 +129,9 @@ class ChatAdapter extends TypeAdapter<Chat> {
       ..writeByte(15)
       ..write(obj.taskPhase)
       ..writeByte(16)
-      ..write(obj.phaseResults);
+      ..write(obj.phaseResults)
+      ..writeByte(17)
+      ..write(obj.taskInvariants);
   }
 }
 

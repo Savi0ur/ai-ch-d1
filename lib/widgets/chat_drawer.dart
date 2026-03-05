@@ -148,10 +148,10 @@ class _ChatTile extends StatelessWidget {
 
   static String _phaseLabel(String? phase) {
     const labels = {
-      'planning': 'Планирование',
-      'execution': 'Выполнение',
-      'validation': 'Валидация',
-      'done': 'Готово',
+      'planning': 'Planning',
+      'execution': 'Execution',
+      'validation': 'Validation',
+      'done': 'Done',
     };
     return labels[phase] ?? '';
   }
@@ -207,7 +207,7 @@ class _ProfileSectionState extends State<_ProfileSection> {
                   size: 16, color: colors.onSurfaceVariant),
               const SizedBox(width: 6),
               Text(
-                'Профиль общения',
+                'Communication profile',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -222,7 +222,7 @@ class _ProfileSectionState extends State<_ProfileSection> {
                 padding: EdgeInsets.zero,
                 constraints:
                     const BoxConstraints(minWidth: 28, minHeight: 28),
-                tooltip: 'Управление профилями',
+                tooltip: 'Manage profiles',
               ),
             ],
           ),
@@ -233,7 +233,7 @@ class _ProfileSectionState extends State<_ProfileSection> {
             isExpanded: true,
             isDense: true,
             hint: Text(
-              'Нет профиля',
+              'No profile',
               style: TextStyle(
                   fontSize: 13, color: colors.onSurfaceVariant),
             ),
@@ -241,7 +241,7 @@ class _ProfileSectionState extends State<_ProfileSection> {
               DropdownMenuItem<String?>(
                 value: null,
                 child: Text(
-                  'Нет профиля',
+                  'No profile',
                   style: TextStyle(
                       fontSize: 13, color: colors.onSurfaceVariant),
                 ),
@@ -300,16 +300,16 @@ class _ProfileManagerDialogState extends State<_ProfileManagerDialog> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Удалить профиль?'),
-        content: Text('Профиль «${profile.name}» будет удалён.'),
+        title: const Text('Delete profile?'),
+        content: Text('Profile "${profile.name}" will be permanently deleted.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Отмена'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Удалить'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -332,7 +332,7 @@ class _ProfileManagerDialogState extends State<_ProfileManagerDialog> {
     final profiles = widget.profileService.getProfiles();
 
     return AlertDialog(
-      title: const Text('Профили общения'),
+      title: const Text('Communication profiles'),
       content: SizedBox(
         width: 480,
         child: Column(
@@ -341,7 +341,7 @@ class _ProfileManagerDialogState extends State<_ProfileManagerDialog> {
             if (profiles.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
-                child: Text('Нет профилей. Создайте первый.'),
+                child: Text('No profiles. Create the first one.'),
               )
             else
               ConstrainedBox(
@@ -366,13 +366,13 @@ class _ProfileManagerDialogState extends State<_ProfileManagerDialog> {
                           IconButton(
                             icon: const Icon(Icons.edit_outlined,
                                 size: 18),
-                            tooltip: 'Редактировать',
+                            tooltip: 'Edit',
                             onPressed: () => _openEditor(p),
                           ),
                           IconButton(
                             icon: const Icon(Icons.delete_outline,
                                 size: 18),
-                            tooltip: 'Удалить',
+                            tooltip: 'Delete',
                             onPressed: () => _delete(p),
                           ),
                         ],
@@ -387,7 +387,7 @@ class _ProfileManagerDialogState extends State<_ProfileManagerDialog> {
               child: OutlinedButton.icon(
                 onPressed: () => _openEditor(),
                 icon: const Icon(Icons.add, size: 18),
-                label: const Text('Создать профиль'),
+                label: const Text('Create profile'),
               ),
             ),
           ],
@@ -396,7 +396,7 @@ class _ProfileManagerDialogState extends State<_ProfileManagerDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Закрыть'),
+          child: const Text('Close'),
         ),
       ],
     );
@@ -527,7 +527,7 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
   Widget build(BuildContext context) {
     final isNew = widget.existing == null;
     return AlertDialog(
-      title: Text(isNew ? 'Новый профиль' : 'Редактировать профиль'),
+      title: Text(isNew ? 'New profile' : 'Edit profile'),
       content: SizedBox(
         width: 480,
         child: SingleChildScrollView(
@@ -539,7 +539,7 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
               TextField(
                 controller: _nameCtrl,
                 decoration: InputDecoration(
-                  labelText: 'Название профиля',
+                  labelText: 'Profile name',
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8)),
                   filled: true,
@@ -550,35 +550,35 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
 
               // ── Стиль общения
               _dropdown(
-                label: 'Тон',
+                label: 'Tone',
                 value: _tone,
                 labels: CommunicationProfile.toneLabels,
                 onChanged: (v) => setState(() => _tone = v),
               ),
               const SizedBox(height: 10),
               _dropdown(
-                label: 'Глубина',
+                label: 'Depth',
                 value: _depth,
                 labels: CommunicationProfile.depthLabels,
                 onChanged: (v) => setState(() => _depth = v),
               ),
               const SizedBox(height: 10),
               _dropdown(
-                label: 'Структура',
+                label: 'Structure',
                 value: _structure,
                 labels: CommunicationProfile.structureLabels,
                 onChanged: (v) => setState(() => _structure = v),
               ),
               const SizedBox(height: 10),
               _dropdown(
-                label: 'Роль',
+                label: 'Role',
                 value: _role,
                 labels: CommunicationProfile.roleLabels,
                 onChanged: (v) => setState(() => _role = v),
               ),
               const SizedBox(height: 10),
               _dropdown(
-                label: 'Инициативность',
+                label: 'Initiative',
                 value: _initiative,
                 labels: CommunicationProfile.initiativeLabels,
                 onChanged: (v) => setState(() => _initiative = v),
@@ -589,7 +589,7 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
               const Divider(),
               const SizedBox(height: 4),
               Text(
-                'Память пользователя',
+                'User memory',
                 style: Theme.of(context).textTheme.titleSmall,
               ),
               const SizedBox(height: 10),
@@ -598,8 +598,8 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
                 maxLines: 3,
                 minLines: 1,
                 decoration: const InputDecoration(
-                  labelText: 'Профиль',
-                  hintText: 'Имя, язык, предпочтения...',
+                  labelText: 'Profile',
+                  hintText: 'Name, language, preferences...',
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
@@ -610,7 +610,7 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
                 maxLines: 4,
                 minLines: 1,
                 decoration: const InputDecoration(
-                  labelText: 'Факты (JSON)',
+                  labelText: 'Facts (JSON)',
                   hintText: '{"profession": "...", "projects": [...]}',
                   border: OutlineInputBorder(),
                   isDense: true,
@@ -622,8 +622,8 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
                 maxLines: 3,
                 minLines: 1,
                 decoration: const InputDecoration(
-                  labelText: 'Всегда-активные инструкции',
-                  hintText: 'Инструкции, всегда включаемые в промпт...',
+                  labelText: 'Always-on instructions',
+                  hintText: 'Instructions always included in the prompt...',
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
@@ -634,8 +634,8 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
                 maxLines: 3,
                 minLines: 1,
                 decoration: const InputDecoration(
-                  labelText: 'Глоссарий (JSON)',
-                  hintText: '{"термин": "определение", ...}',
+                  labelText: 'Glossary (JSON)',
+                  hintText: '{"term": "definition", ...}',
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
@@ -647,11 +647,11 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Отмена'),
+          child: const Text('Cancel'),
         ),
         FilledButton(
           onPressed: _save,
-          child: const Text('Сохранить'),
+          child: const Text('Save'),
         ),
       ],
     );

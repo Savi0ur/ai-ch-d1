@@ -6,6 +6,8 @@ class TaskPhaseBar extends StatefulWidget {
   final bool isExtracting;
   final bool canAdvance;
   final VoidCallback onAdvance;
+  final List<String> invariants;
+  final VoidCallback onEditInvariants;
 
   const TaskPhaseBar({
     super.key,
@@ -14,6 +16,8 @@ class TaskPhaseBar extends StatefulWidget {
     required this.isExtracting,
     required this.canAdvance,
     required this.onAdvance,
+    required this.invariants,
+    required this.onEditInvariants,
   });
 
   @override
@@ -22,13 +26,14 @@ class TaskPhaseBar extends StatefulWidget {
 
 class _TaskPhaseBarState extends State<TaskPhaseBar> {
   bool _expanded = false;
+  bool _invariantsExpanded = false;
 
   static const _phases = ['planning', 'execution', 'validation', 'done'];
   static const _phaseLabels = {
-    'planning': 'Планирование',
-    'execution': 'Выполнение',
-    'validation': 'Валидация',
-    'done': 'Готово',
+    'planning': 'Planning',
+    'execution': 'Execution',
+    'validation': 'Validation',
+    'done': 'Done',
   };
   static const _phaseIcons = {
     'planning': Icons.edit_note,
@@ -106,7 +111,7 @@ class _TaskPhaseBarState extends State<TaskPhaseBar> {
                   FilledButton.tonalIcon(
                     onPressed: widget.onAdvance,
                     icon: const Icon(Icons.arrow_forward, size: 16),
-                    label: const Text('Завершить этап', style: TextStyle(fontSize: 12)),
+                    label: const Text('Complete phase', style: TextStyle(fontSize: 12)),
                   ),
               ],
             ),
@@ -126,7 +131,7 @@ class _TaskPhaseBarState extends State<TaskPhaseBar> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      'Результат: ${_phaseLabels[previousPhase]}',
+                      'Result: ${_phaseLabels[previousPhase]}',
                       style: TextStyle(
                         fontSize: 11,
                         color: colors.onSurfaceVariant,
@@ -148,6 +153,106 @@ class _TaskPhaseBarState extends State<TaskPhaseBar> {
                       fontSize: 12,
                       color: colors.onSurfaceVariant,
                     ),
+                  ),
+                ),
+              ),
+          ],
+          // Collapsible секция инвариантов
+          InkWell(
+            onTap: () => setState(() => _invariantsExpanded = !_invariantsExpanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    _invariantsExpanded ? Icons.expand_less : Icons.expand_more,
+                    size: 16,
+                    color: colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    widget.invariants.isEmpty
+                        ? 'Invariants: none'
+                        : 'Invariants: ${widget.invariants.length}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (_invariantsExpanded)
+                    InkWell(
+                      onTap: widget.onEditInvariants,
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(
+                          Icons.edit,
+                          size: 14,
+                          color: colors.primary,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (_invariantsExpanded) ...[
+            if (widget.invariants.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: Row(
+                  children: [
+                    Text(
+                      'No invariants. Tap  to add.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colors.onSurfaceVariant.withValues(alpha: 0.7),
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                    InkWell(
+                      onTap: widget.onEditInvariants,
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Icon(Icons.edit, size: 14, color: colors.primary),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxHeight: 120),
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: widget.invariants
+                        .map((inv) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 1),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(Icons.lock_outline,
+                                      size: 12,
+                                      color: colors.tertiary),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      inv,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: colors.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ))
+                        .toList(),
                   ),
                 ),
               ),

@@ -86,10 +86,46 @@ class ChatController extends ChangeNotifier {
 
   // Task mode
   bool _pendingTaskMode = false;
+  List<String> _pendingInvariants = [];
   bool isExtractingPhaseResult = false;
 
-  bool get isTaskMode => activeChat?.isTaskMode ?? false;
+  bool get isTaskMode => activeChat?.isTaskMode ?? _pendingTaskMode;
   String? get taskPhase => activeChat?.taskPhase;
+  List<String> get parsedTaskInvariants {
+    if (activeChat == null) return List.from(_pendingInvariants);
+    final raw = activeChat?.taskInvariants;
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      return List<String>.from(jsonDecode(raw) as List);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  void addTaskInvariant(String text) {
+    if (activeChat == null) {
+      _pendingInvariants.add(text.trim());
+      notifyListeners();
+      return;
+    }
+    final list = parsedTaskInvariants..add(text.trim());
+    activeChat!.taskInvariants = jsonEncode(list);
+    repository.updateChat(activeChat!);
+    notifyListeners();
+  }
+
+  void removeTaskInvariant(int index) {
+    if (activeChat == null) {
+      _pendingInvariants.removeAt(index);
+      notifyListeners();
+      return;
+    }
+    final list = parsedTaskInvariants..removeAt(index);
+    activeChat!.taskInvariants = jsonEncode(list);
+    repository.updateChat(activeChat!);
+    notifyListeners();
+  }
+
   Map<String, String> get parsedPhaseResults {
     final raw = activeChat?.phaseResults;
     if (raw == null || raw.isEmpty) return {};
@@ -126,6 +162,7 @@ class ChatController extends ChangeNotifier {
     streamingContent = '';
     error = null;
     _pendingTaskMode = false;
+    _pendingInvariants = [];
     apiService.clearLogs();
     _resetSettings();
     notifyListeners();
@@ -137,6 +174,7 @@ class ChatController extends ChangeNotifier {
     streamingContent = '';
     error = null;
     _pendingTaskMode = true;
+    _pendingInvariants = [];
     apiService.clearLogs();
     _resetSettings();
     notifyListeners();
@@ -220,24 +258,34 @@ class ChatController extends ChangeNotifier {
 
   String _buildPhaseSystemPrompt() {
     final results = parsedPhaseResults;
+    String prompt;
     switch (activeChat?.taskPhase) {
       case 'planning':
-        return 'Ты помогаешь спланировать задачу. Уточняй требования, разбивай на шаги, формируй план. НЕ выполняй — только планируй.';
+        prompt = 'You are helping to plan a task. Clarify requirements, break it into steps, and form a plan. Do NOT execute — only plan.';
       case 'execution':
         final plan = results['planning'] ?? '';
-        return 'Выполняй задачу по плану:\n$plan\n\nФокус на реализации.';
+        prompt = 'Execute the task according to the plan:\n$plan\n\nFocus on implementation.';
       case 'validation':
         final plan = results['planning'] ?? '';
         final exec = results['execution'] ?? '';
-        return 'Проведи ревью результатов:\nПлан:\n$plan\nРезультат:\n$exec\n\nПроверь соответствие плану, найди проблемы.';
+        prompt = 'Review the results:\nPlan:\n$plan\nResult:\n$exec\n\nCheck conformance to the plan, identify issues.';
       case 'done':
         final plan = results['planning'] ?? '';
         final exec = results['execution'] ?? '';
         final val = results['validation'] ?? '';
-        return 'Задача завершена.\nПлан:\n$plan\nРезультат:\n$exec\nВалидация:\n$val';
+        prompt = 'Task completed.\nPlan:\n$plan\nResult:\n$exec\nValidation:\n$val';
       default:
         return '';
     }
+
+    final invariants = parsedTaskInvariants;
+    if (invariants.isEmpty) return prompt;
+
+    final block = '\n\nINVARIANTS (constraints that MUST ALWAYS hold):\n'
+        '${invariants.map((e) => '- $e').join('\n')}'
+        '\n\nIMPORTANT: If any proposed solution violates even one invariant — REFUSE it and explicitly explain which invariant is violated and why.';
+
+    return prompt + block;
   }
 
   /// Формирует список сообщений для API-запроса в зависимости от стратегии контекста.
@@ -470,9 +518,9 @@ class ChatController extends ChangeNotifier {
       // превышает контекстное окно, суммаризация не поможет
       if (keepFrom <= 0) {
         throw Exception(
-          'Сообщение слишком длинное для контекстного окна модели '
-          '($contextWindow токенов). Сократите текст или выберите '
-          'модель с большим контекстом.',
+          'Message is too long for the model\'s context window '
+          '($contextWindow tokens). Shorten the text or choose '
+          'a model with a larger context.',
         );
       }
 
@@ -507,6 +555,10 @@ class ChatController extends ChangeNotifier {
       if (_pendingTaskMode) {
         activeChat!.isTaskMode = true;
         activeChat!.taskPhase = 'planning';
+        if (_pendingInvariants.isNotEmpty) {
+          activeChat!.taskInvariants = jsonEncode(_pendingInvariants);
+          _pendingInvariants = [];
+        }
         _pendingTaskMode = false;
       }
       repository.updateChat(activeChat!);
@@ -651,9 +703,9 @@ class ChatController extends ChangeNotifier {
 
     // Автоматически запускаем следующую фазу
     const phaseTriggers = {
-      'execution': 'Приступи к выполнению задачи строго по утверждённому плану.',
-      'validation': 'Проведи валидацию: проверь результаты выполнения на соответствие плану, найди проблемы и дай рекомендации.',
-      'done': 'Зафиксируй финальный результат задачи: итоговое резюме, что сделано, ключевые артефакты и выводы.',
+      'execution': 'Proceed to execute the task strictly according to the approved plan.',
+      'validation': 'Perform validation: check the execution results against the plan, identify issues and provide recommendations.',
+      'done': 'Summarize the final task result: overall summary, what was done, key artifacts and conclusions.',
     };
     final trigger = phaseTriggers[nextPhase];
     if (trigger != null) {

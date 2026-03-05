@@ -31,51 +31,51 @@ class CommunicationProfile extends HiveObject {
     this.userGlossary,
   });
 
-  // ─── UI Labels (Russian) ──────────────────────────────────────────────────
+  // ─── UI Labels ────────────────────────────────────────────────────────────
 
   static const toneLabels = <String, String>{
-    'neutral': 'Нейтральный',
-    'friendly': 'Дружелюбный',
-    'formal': 'Формальный',
-    'informal': 'Неформальный',
-    'motivating': 'Мотивирующий',
-    'empathic': 'Эмпатичный',
-    'strict': 'Строгий',
-    'humorous': 'Юмористический',
+    'neutral': 'Neutral',
+    'friendly': 'Friendly',
+    'formal': 'Formal',
+    'informal': 'Informal',
+    'motivating': 'Motivating',
+    'empathic': 'Empathic',
+    'strict': 'Strict',
+    'humorous': 'Humorous',
   };
 
   static const depthLabels = <String, String>{
-    'brief': 'Кратко',
-    'standard': 'Стандартно',
-    'detailed': 'Подробно',
-    'expert': 'Экспертно',
-    'eli5': 'Просто (ELI5)',
+    'brief': 'Brief',
+    'standard': 'Standard',
+    'detailed': 'Detailed',
+    'expert': 'Expert',
+    'eli5': 'Simple (ELI5)',
   };
 
   static const structureLabels = <String, String>{
-    'no_structure': 'Без структуры',
-    'lists': 'Списки',
-    'step_by_step': 'По шагам',
-    'examples': 'С примерами',
-    'tables': 'Таблицы',
-    'conclusions': 'Выводы',
+    'no_structure': 'No structure',
+    'lists': 'Lists',
+    'step_by_step': 'Step by step',
+    'examples': 'With examples',
+    'tables': 'Tables',
+    'conclusions': 'Conclusions',
   };
 
   static const roleLabels = <String, String>{
-    'mentor': 'Наставник',
-    'coach': 'Коуч',
-    'analyst': 'Аналитик',
-    'partner': 'Партнёр',
-    'expert': 'Эксперт',
-    'critic': 'Критик',
-    'secretary': 'Секретарь',
+    'mentor': 'Mentor',
+    'coach': 'Coach',
+    'analyst': 'Analyst',
+    'partner': 'Partner',
+    'expert': 'Expert',
+    'critic': 'Critic',
+    'secretary': 'Secretary',
   };
 
   static const initiativeLabels = <String, String>{
-    'reactive': 'Реактивный',
-    'proactive': 'Проактивный',
-    'clarifying': 'Уточняющий',
-    'minimal_questions': 'Минум вопросов',
+    'reactive': 'Reactive',
+    'proactive': 'Proactive',
+    'clarifying': 'Clarifying',
+    'minimal_questions': 'Minimal questions',
   };
 
   // ─── Prompt Instructions (English) ───────────────────────────────────────
