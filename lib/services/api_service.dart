@@ -39,6 +39,13 @@ class RequestLog {
   }
 }
 
+class ToolCallInfo {
+  String id;
+  String name;
+  String arguments;
+  ToolCallInfo({this.id = '', this.name = '', this.arguments = ''});
+}
+
 class ApiService {
   static const String _baseUrl = 'https://openai.api.proxyapi.ru/v1';
   static const String _summarizationModel = 'openai/gpt-4o-mini';
@@ -49,6 +56,7 @@ class ApiService {
   ResponseLog? lastResponseLog;
   RequestLog? lastSummarizationLog;
   ResponseLog? lastSummarizationResponseLog;
+  List<ToolCallInfo> pendingToolCalls = [];
 
   /// Сбрасывает все сохранённые логи запросов/ответов.
   void clearLogs() {
@@ -65,6 +73,7 @@ class ApiService {
   }
 
   /// Sends a list of messages and returns a stream of content deltas (tokens).
+  /// If the model responds with tool_calls, they are accumulated in [pendingToolCalls].
   Stream<String> sendMessageStream(
     List<ChatMessage> chatMessages, {
     required String model,
@@ -72,10 +81,13 @@ class ApiService {
     int? maxTokens,
     String? stopSequence,
     double? temperature,
+    List<Map<String, dynamic>>? tools,
+    List<Map<String, dynamic>>? extraMessages,
   }) async* {
+    pendingToolCalls = [];
     final url = Uri.parse('$_baseUrl/chat/completions');
 
-    final messages = <Map<String, String>>[];
+    final messages = <Map<String, dynamic>>[];
     if (systemPrompt != null && systemPrompt.isNotEmpty) {
       messages.add({'role': 'system', 'content': systemPrompt});
     }
@@ -84,6 +96,9 @@ class ApiService {
         messages.add({'role': msg.role, 'content': msg.content});
       }
     }
+    if (extraMessages != null) {
+      messages.addAll(extraMessages);
+    }
 
     final body = <String, dynamic>{
       'model': model,
@@ -91,6 +106,10 @@ class ApiService {
       'stream': true,
       'stream_options': {'include_usage': true},
     };
+
+    if (tools != null && tools.isNotEmpty) {
+      body['tools'] = tools;
+    }
 
     if (maxTokens != null) {
       body['max_tokens'] = maxTokens;
@@ -161,11 +180,32 @@ class ApiService {
             }
             final choices = json['choices'] as List<dynamic>?;
             if (choices != null && choices.isNotEmpty) {
-              final delta =
-                  (choices[0] as Map<String, dynamic>)['delta'] as Map<String, dynamic>?;
+              final choice = choices[0] as Map<String, dynamic>;
+              final delta = choice['delta'] as Map<String, dynamic>?;
               final content = delta?['content'] as String?;
               if (content != null) {
                 yield content;
+              }
+              // Accumulate tool_calls from delta chunks
+              final toolCallsData = delta?['tool_calls'] as List<dynamic>?;
+              if (toolCallsData != null) {
+                for (final tc in toolCallsData) {
+                  final tcMap = tc as Map<String, dynamic>;
+                  final index = tcMap['index'] as int;
+                  while (pendingToolCalls.length <= index) {
+                    pendingToolCalls.add(ToolCallInfo());
+                  }
+                  final info = pendingToolCalls[index];
+                  final id = tcMap['id'] as String?;
+                  if (id != null) info.id = id;
+                  final function = tcMap['function'] as Map<String, dynamic>?;
+                  if (function != null) {
+                    final name = function['name'] as String?;
+                    if (name != null) info.name = name;
+                    final args = function['arguments'] as String?;
+                    if (args != null) info.arguments += args;
+                  }
+                }
               }
             }
           } catch (_) {

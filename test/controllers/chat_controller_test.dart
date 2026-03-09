@@ -34,6 +34,8 @@ class FakeApiService extends ApiService {
     int? maxTokens,
     String? stopSequence,
     double? temperature,
+    List<Map<String, dynamic>>? tools,
+    List<Map<String, dynamic>>? extraMessages,
   }) async* {
     sendMessageCalled = true;
     for (final token in tokensToStream) {

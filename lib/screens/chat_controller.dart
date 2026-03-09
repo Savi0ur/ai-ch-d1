@@ -6,6 +6,7 @@ import '../models/model_config.dart';
 import '../services/api_service.dart';
 import '../services/chat_repository.dart';
 import '../services/communication_profile_service.dart';
+import '../services/mcp_service.dart';
 import '../services/memory_service.dart';
 
 class ChatController extends ChangeNotifier {
@@ -13,6 +14,7 @@ class ChatController extends ChangeNotifier {
   final MemoryService memoryService;
   final CommunicationProfileService profileService;
   final ApiService apiService;
+  final McpService mcpService;
   final Stopwatch stopwatch = Stopwatch();
 
   // Settings controllers (owned by controller, disposed here)
@@ -84,6 +86,11 @@ class ChatController extends ChangeNotifier {
   String streamingContent = '';
   String? error;
 
+  // MCP state
+  bool isConnectingMcp = false;
+  bool isCallingTools = false;
+  String? toolCallStatus;
+
   // Task mode
   bool _pendingTaskMode = false;
   List<String> _pendingInvariants = [];
@@ -147,7 +154,9 @@ class ChatController extends ChangeNotifier {
     required this.memoryService,
     required this.profileService,
     ApiService? apiService,
-  }) : apiService = apiService ?? ApiService() {
+    McpService? mcpService,
+  })  : apiService = apiService ?? ApiService(),
+        mcpService = mcpService ?? McpService() {
     loadChats();
   }
 
@@ -587,6 +596,10 @@ class ChatController extends ChangeNotifier {
 
       final apiMessages = buildApiMessages();
 
+      final mcpTools = mcpService.hasEnabledTools
+          ? mcpService.getOpenAiTools()
+          : null;
+
       final stream = apiService.sendMessageStream(
         apiMessages,
         model: selectedModel,
@@ -598,6 +611,7 @@ class ChatController extends ChangeNotifier {
             ? stopSequenceController.text.trim()
             : null,
         temperature: settingsEnabled ? temperature : null,
+        tools: mcpTools,
       );
 
       _streamSubscription = stream.listen(
@@ -613,6 +627,17 @@ class ChatController extends ChangeNotifier {
         },
         onDone: () async {
           stopwatch.stop();
+
+          // Handle tool calls if model requested them
+          if (apiService.pendingToolCalls.isNotEmpty &&
+              mcpService.hasEnabledTools) {
+            try {
+              await _executeToolCallLoop();
+            } catch (e) {
+              error = 'Tool call error: $e';
+            }
+          }
+
           if (streamingContent.isNotEmpty) {
             final assistantMsg = repository.addMessage(
               chatId: activeChat!.id,
@@ -711,6 +736,102 @@ class ChatController extends ChangeNotifier {
     if (trigger != null) {
       await sendMessage(trigger, isAutoTrigger: true);
     }
+  }
+
+  // ─── MCP (VkusVill) ───
+
+  Future<void> connectMcp() async {
+    isConnectingMcp = true;
+    notifyListeners();
+    try {
+      await mcpService.connect();
+    } catch (_) {}
+    isConnectingMcp = false;
+    notifyListeners();
+  }
+
+  Future<void> disconnectMcp() async {
+    await mcpService.disconnect();
+    notifyListeners();
+  }
+
+  void setMcpToolEnabled(String toolName, bool enabled) {
+    mcpService.setToolEnabled(toolName, enabled);
+    notifyListeners();
+  }
+
+  // ─── Tool call execution loop ───
+
+  Future<void> _executeToolCallLoop() async {
+    final extraMessages = <Map<String, dynamic>>[];
+
+    while (apiService.pendingToolCalls.isNotEmpty) {
+      final toolCalls = List<ToolCallInfo>.from(apiService.pendingToolCalls);
+
+      // Add assistant message with tool_calls to conversation
+      extraMessages.add({
+        'role': 'assistant',
+        'content': streamingContent.isEmpty ? null : streamingContent,
+        'tool_calls': toolCalls
+            .map((tc) => {
+                  'id': tc.id,
+                  'type': 'function',
+                  'function': {'name': tc.name, 'arguments': tc.arguments},
+                })
+            .toList(),
+      });
+
+      streamingContent = '';
+      isCallingTools = true;
+
+      // Execute each tool call via MCP
+      for (final tc in toolCalls) {
+        toolCallStatus = 'Calling ${tc.name}...';
+        notifyListeners();
+
+        String result;
+        try {
+          final args = tc.arguments.isNotEmpty
+              ? jsonDecode(tc.arguments) as Map<String, dynamic>
+              : <String, dynamic>{};
+          result = await mcpService.callTool(tc.name, args);
+        } catch (e) {
+          result = 'Error: $e';
+        }
+
+        extraMessages.add({
+          'role': 'tool',
+          'tool_call_id': tc.id,
+          'content': result,
+        });
+      }
+
+      // Re-send with tool results
+      toolCallStatus = 'Processing results...';
+      notifyListeners();
+
+      final stream = apiService.sendMessageStream(
+        buildApiMessages(),
+        model: selectedModel,
+        systemPrompt: buildSystemPrompt(),
+        maxTokens: settingsEnabled
+            ? int.tryParse(maxTokensController.text.trim())
+            : null,
+        stopSequence:
+            settingsEnabled ? stopSequenceController.text.trim() : null,
+        temperature: settingsEnabled ? temperature : null,
+        tools: mcpService.getOpenAiTools(),
+        extraMessages: extraMessages,
+      );
+
+      await for (final delta in stream) {
+        streamingContent += delta;
+        notifyListeners();
+      }
+    }
+
+    isCallingTools = false;
+    toolCallStatus = null;
   }
 
   void cancelStream() {

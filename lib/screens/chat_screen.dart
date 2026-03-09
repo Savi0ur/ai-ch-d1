@@ -342,6 +342,94 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ],
                 const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 8),
+                Text('VkusVill MCP',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(
+                  'mcp001.vkusvill.ru',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                if (_ctrl.mcpService.isConnecting)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 10),
+                        Text('Connecting...'),
+                      ],
+                    ),
+                  )
+                else if (_ctrl.mcpService.isConnected) ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle, size: 18, color: Colors.green),
+                      const SizedBox(width: 6),
+                      const Text('Connected'),
+                      const Spacer(),
+                      TextButton.icon(
+                        icon: const Icon(Icons.link_off, size: 18),
+                        label: const Text('Disconnect'),
+                        onPressed: () async {
+                          await _ctrl.disconnectMcp();
+                          setSheetState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ..._ctrl.mcpService.allTools.map((tool) => SwitchListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        secondary: Icon(Icons.build_outlined,
+                            size: 18,
+                            color: Theme.of(context).colorScheme.primary),
+                        title: Text(tool.name, style: const TextStyle(fontSize: 13)),
+                        subtitle: tool.description != null
+                            ? Text(tool.description!,
+                                style: const TextStyle(fontSize: 11),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis)
+                            : null,
+                        value: _ctrl.mcpService.isToolEnabled(tool.name),
+                        onChanged: (enabled) {
+                          _ctrl.setMcpToolEnabled(tool.name, enabled);
+                          setSheetState(() {});
+                        },
+                      )),
+                ] else ...[
+                  if (_ctrl.mcpService.error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        _ctrl.mcpService.error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 12,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.power, size: 18),
+                    label: const Text('Connect'),
+                    onPressed: () async {
+                      await _ctrl.connectMcp();
+                      setSheetState(() {});
+                    },
+                  ),
+                ],
+                const SizedBox(height: 16),
               ],
             ),
           ),
@@ -469,6 +557,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         onEditInvariants: _showInvariantsEditor,
                       ),
                     Expanded(child: _buildMessageList()),
+                    if (_ctrl.isCallingTools) _buildToolCallBanner(),
                     if (_ctrl.isSummarizing) _buildSummarizingBanner(),
                     if (_ctrl.error != null) _buildErrorBanner(),
                     if (!_ctrl.isTaskMode) WorkingMemoryPanel(
@@ -550,6 +639,34 @@ class _ChatScreenState extends State<ChatScreen> {
           isStreaming: true,
         );
       },
+    );
+  }
+
+  Widget _buildToolCallBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Theme.of(context).colorScheme.tertiaryContainer,
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _ctrl.toolCallStatus ?? 'Calling tools...',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onTertiaryContainer,
+                fontSize: 13,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
