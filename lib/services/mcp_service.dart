@@ -342,7 +342,9 @@ class McpService {
     }).join('\n');
 
     return 'Connected MCP servers:\n$lines\n'
-        'When tools return relative URL paths (e.g. /data/file.md), '
-        'construct full download links using the server\'s base URL.';
+        'When tools return relative URL paths (e.g. /mcp-files/file.md), '
+        'construct full download links using the server\'s base URL.\n'
+        'IMPORTANT: Do NOT modify or replace any URLs returned by tools. '
+        'Use them exactly as provided (e.g. shikimori.one links must stay as-is).';
   }
 }
