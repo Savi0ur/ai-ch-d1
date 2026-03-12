@@ -323,4 +323,26 @@ class McpService {
       box.put(_disabledToolsKey, jsonEncode(_disabledTools.toList()));
     } catch (_) {}
   }
+
+  /// Builds a context string with connected MCP servers and their base URLs.
+  /// Used in system prompt so the LLM can construct download links.
+  String buildMcpContext() {
+    final connected = servers.where((s) => s.isConnected).toList();
+    if (connected.isEmpty) return '';
+
+    final lines = connected.map((s) {
+      final baseUrl = s.url.endsWith('/mcp')
+          ? s.url.substring(0, s.url.length - 4)
+          : s.url;
+      final toolNames = s.tools
+          .where((t) => !_disabledTools.contains(t.name))
+          .map((t) => t.name)
+          .join(', ');
+      return '- ${s.name}: base URL $baseUrl (tools: $toolNames)';
+    }).join('\n');
+
+    return 'Connected MCP servers:\n$lines\n'
+        'When tools return relative URL paths (e.g. /data/file.md), '
+        'construct full download links using the server\'s base URL.';
+  }
 }

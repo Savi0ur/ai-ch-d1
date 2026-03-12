@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/chat.dart';
 
 class MessageBubble extends StatefulWidget {
@@ -52,6 +54,70 @@ class _MessageBubbleState extends State<MessageBubble> {
       );
     }
 
+    // Контент сообщения
+    final Widget contentWidget;
+    if (widget.isStreaming) {
+      contentWidget = ExcludeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.message.content,
+              style: TextStyle(color: colors.onSurface),
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: colors.onSurface,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (isUser) {
+      contentWidget = SelectableText(
+        widget.message.content,
+        style: TextStyle(color: colors.onPrimary),
+      );
+    } else {
+      // Markdown для assistant-сообщений
+      contentWidget = MarkdownBody(
+        data: widget.message.content,
+        selectable: true,
+        onTapLink: (text, href, title) {
+          if (href != null) {
+            launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
+          }
+        },
+        styleSheet: MarkdownStyleSheet(
+          p: TextStyle(color: colors.onSurface, fontSize: 14),
+          a: TextStyle(color: colors.primary, decoration: TextDecoration.underline),
+          h1: TextStyle(color: colors.onSurface, fontSize: 20, fontWeight: FontWeight.bold),
+          h2: TextStyle(color: colors.onSurface, fontSize: 18, fontWeight: FontWeight.bold),
+          h3: TextStyle(color: colors.onSurface, fontSize: 16, fontWeight: FontWeight.bold),
+          strong: TextStyle(color: colors.onSurface, fontWeight: FontWeight.bold),
+          em: TextStyle(color: colors.onSurface, fontStyle: FontStyle.italic),
+          code: TextStyle(
+            color: colors.onSurfaceVariant,
+            backgroundColor: colors.surfaceContainerHigh,
+            fontFamily: 'monospace',
+            fontSize: 13,
+          ),
+          codeblockDecoration: BoxDecoration(
+            color: colors.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          blockquoteDecoration: BoxDecoration(
+            border: Border(left: BorderSide(color: colors.outline, width: 3)),
+          ),
+          listBullet: TextStyle(color: colors.onSurface),
+        ),
+      );
+    }
+
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: MouseRegion(
@@ -75,35 +141,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                   bottomRight: Radius.circular(isUser ? 4 : 16),
                 ),
               ),
-              child: widget.isStreaming
-                  ? ExcludeSemantics(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.message.content,
-                            style: TextStyle(
-                              color: colors.onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: colors.onSurface,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : SelectableText(
-                      widget.message.content,
-                      style: TextStyle(
-                        color: isUser ? colors.onPrimary : colors.onSurface,
-                      ),
-                    ),
+              child: contentWidget,
             ),
             if (showBranchButton)
               Positioned(

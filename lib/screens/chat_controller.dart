@@ -261,6 +261,10 @@ class ChatController extends ChangeNotifier {
       parts.add('Current task structure (working memory):\n${chat.workingMemory}');
     }
 
+    // 4. MCP server context (base URLs for constructing download links)
+    final mcpContext = mcpService.buildMcpContext();
+    if (mcpContext.isNotEmpty) parts.add(mcpContext);
+
     return parts.join('\n\n');
   }
 
