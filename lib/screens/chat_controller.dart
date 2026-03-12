@@ -87,7 +87,6 @@ class ChatController extends ChangeNotifier {
   String? error;
 
   // MCP state
-  bool isConnectingMcp = false;
   bool isCallingTools = false;
   String? toolCallStatus;
 
@@ -738,20 +737,30 @@ class ChatController extends ChangeNotifier {
     }
   }
 
-  // ─── MCP (VkusVill) ───
+  // ─── MCP Servers ───
 
-  Future<void> connectMcp() async {
-    isConnectingMcp = true;
-    notifyListeners();
-    try {
-      await mcpService.connect();
-    } catch (_) {}
-    isConnectingMcp = false;
+  void addMcpServer(String name, String url) {
+    mcpService.addServer(name, url);
     notifyListeners();
   }
 
-  Future<void> disconnectMcp() async {
-    await mcpService.disconnect();
+  Future<void> removeMcpServer(int index) async {
+    await mcpService.removeServer(index);
+    notifyListeners();
+  }
+
+  Future<void> connectMcpServer(int index) async {
+    final server = mcpService.servers[index];
+    server.isConnecting = true;
+    notifyListeners();
+    try {
+      await mcpService.connectServer(index);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> disconnectMcpServer(int index) async {
+    await mcpService.disconnectServer(index);
     notifyListeners();
   }
 

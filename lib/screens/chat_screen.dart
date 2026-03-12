@@ -344,96 +344,218 @@ class _ChatScreenState extends State<ChatScreen> {
                 const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 8),
-                Text('VkusVill MCP',
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Text(
-                  'mcp001.vkusvill.ru',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                Row(
+                  children: [
+                    Text('MCP Servers',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline, size: 22),
+                      tooltip: 'Add server',
+                      onPressed: () => _showAddMcpServerDialog(context, setSheetState),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                if (_ctrl.mcpService.isConnecting)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: 10),
-                        Text('Connecting...'),
-                      ],
+                if (_ctrl.mcpService.servers.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'No servers added',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
                     ),
-                  )
-                else if (_ctrl.mcpService.isConnected) ...[
-                  Row(
-                    children: [
-                      const Icon(Icons.check_circle, size: 18, color: Colors.green),
-                      const SizedBox(width: 6),
-                      const Text('Connected'),
-                      const Spacer(),
-                      TextButton.icon(
-                        icon: const Icon(Icons.link_off, size: 18),
-                        label: const Text('Disconnect'),
-                        onPressed: () async {
-                          await _ctrl.disconnectMcp();
-                          setSheetState(() {});
-                        },
-                      ),
-                    ],
                   ),
-                  const SizedBox(height: 8),
-                  ..._ctrl.mcpService.allTools.map((tool) => SwitchListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        secondary: Icon(Icons.build_outlined,
-                            size: 18,
-                            color: Theme.of(context).colorScheme.primary),
-                        title: Text(tool.name, style: const TextStyle(fontSize: 13)),
-                        subtitle: tool.description != null
-                            ? Text(tool.description!,
-                                style: const TextStyle(fontSize: 11),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis)
-                            : null,
-                        value: _ctrl.mcpService.isToolEnabled(tool.name),
-                        onChanged: (enabled) {
-                          _ctrl.setMcpToolEnabled(tool.name, enabled);
-                          setSheetState(() {});
-                        },
-                      )),
-                ] else ...[
-                  if (_ctrl.mcpService.error != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        _ctrl.mcpService.error!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                          fontSize: 12,
-                        ),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  FilledButton.icon(
-                    icon: const Icon(Icons.power, size: 18),
-                    label: const Text('Connect'),
-                    onPressed: () async {
-                      await _ctrl.connectMcp();
-                      setSheetState(() {});
-                    },
-                  ),
-                ],
+                for (var i = 0; i < _ctrl.mcpService.servers.length; i++)
+                  _buildMcpServerTile(context, i, setSheetState),
                 const SizedBox(height: 16),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildMcpServerTile(
+      BuildContext context, int index, StateSetter setSheetState) {
+    final server = _ctrl.mcpService.servers[index];
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  server.isConnected
+                      ? Icons.check_circle
+                      : Icons.circle_outlined,
+                  size: 16,
+                  color: server.isConnected ? Colors.green : null,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(server.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13)),
+                ),
+                if (!server.isConnecting)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    tooltip: 'Remove',
+                    onPressed: () async {
+                      await _ctrl.removeMcpServer(index);
+                      setSheetState(() {});
+                    },
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 22),
+              child: Text(
+                server.url,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(height: 6),
+            if (server.isConnecting)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                    SizedBox(width: 8),
+                    Text('Connecting...', style: TextStyle(fontSize: 12)),
+                  ],
+                ),
+              )
+            else if (server.isConnected) ...[
+              Row(
+                children: [
+                  const Spacer(),
+                  TextButton.icon(
+                    icon: const Icon(Icons.link_off, size: 16),
+                    label: const Text('Disconnect',
+                        style: TextStyle(fontSize: 12)),
+                    onPressed: () async {
+                      await _ctrl.disconnectMcpServer(index);
+                      setSheetState(() {});
+                    },
+                  ),
+                ],
+              ),
+              ...server.tools.map((tool) => SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    secondary: Icon(Icons.build_outlined,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.primary),
+                    title:
+                        Text(tool.name, style: const TextStyle(fontSize: 13)),
+                    subtitle: tool.description != null
+                        ? Text(tool.description!,
+                            style: const TextStyle(fontSize: 11),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis)
+                        : null,
+                    value: _ctrl.mcpService.isToolEnabled(tool.name),
+                    onChanged: (enabled) {
+                      _ctrl.setMcpToolEnabled(tool.name, enabled);
+                      setSheetState(() {});
+                    },
+                  )),
+            ] else ...[
+              if (server.error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    server.error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 11,
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.power, size: 16),
+                  label:
+                      const Text('Connect', style: TextStyle(fontSize: 12)),
+                  onPressed: () async {
+                    await _ctrl.connectMcpServer(index);
+                    setSheetState(() {});
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddMcpServerDialog(
+      BuildContext context, StateSetter setSheetState) {
+    final nameCtrl = TextEditingController();
+    final urlCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add MCP Server'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Name',
+                hintText: 'e.g. vkusvill',
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: urlCtrl,
+              decoration: const InputDecoration(
+                labelText: 'URL',
+                hintText: 'https://example.com/mcp',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final name = nameCtrl.text.trim();
+              final url = urlCtrl.text.trim();
+              if (name.isNotEmpty && url.isNotEmpty) {
+                _ctrl.addMcpServer(name, url);
+                Navigator.pop(ctx);
+                setSheetState(() {});
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
       ),
     );
   }

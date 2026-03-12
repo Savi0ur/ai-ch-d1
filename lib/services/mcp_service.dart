@@ -203,37 +203,39 @@ class McpServer {
     isConnected = false;
     tools.clear();
   }
+
+  Map<String, dynamic> toJson() => {'name': name, 'url': url};
+
+  static McpServer fromJson(Map<String, dynamic> json) => McpServer(
+        name: json['name'] as String,
+        url: json['url'] as String,
+      );
 }
 
-/// MCP-сервис с захардкоженным VkusVill сервером.
-/// Поддерживает включение/выключение отдельных инструментов.
+/// MCP-сервис с поддержкой произвольного количества серверов.
+/// Список серверов сохраняется в Hive, поддерживает включение/выключение инструментов.
 class McpService {
+  static const _serversKey = 'mcp_servers';
   static const _disabledToolsKey = 'mcp_disabled_tools';
 
-  final McpServer vkusvill = McpServer(
-    name: 'vkusvill',
-    url: 'https://mcp001.vkusvill.ru/mcp',
-  );
+  final List<McpServer> servers = [];
 
   /// Множество отключённых инструментов (по имени).
   final Set<String> _disabledTools = {};
 
   McpService() {
+    _loadServers();
     _loadDisabledTools();
   }
 
-  bool get isConnected => vkusvill.isConnected;
-  bool get isConnecting => vkusvill.isConnecting;
-  String? get error => vkusvill.error;
-  List<McpTool> get allTools => vkusvill.tools;
+  List<McpTool> get allTools =>
+      servers.where((s) => s.isConnected).expand((s) => s.tools).toList();
 
   bool get hasEnabledTools =>
-      vkusvill.isConnected &&
-      vkusvill.tools.any((t) => !_disabledTools.contains(t.name));
+      allTools.any((t) => !_disabledTools.contains(t.name));
 
-  List<McpTool> get enabledTools => vkusvill.tools
-      .where((t) => !_disabledTools.contains(t.name))
-      .toList();
+  List<McpTool> get enabledTools =>
+      allTools.where((t) => !_disabledTools.contains(t.name)).toList();
 
   bool isToolEnabled(String toolName) => !_disabledTools.contains(toolName);
 
@@ -249,15 +251,60 @@ class McpService {
   List<Map<String, dynamic>> getOpenAiTools() =>
       enabledTools.map((t) => t.toOpenAiTool()).toList();
 
-  Future<void> connect() async => vkusvill.connect();
-  Future<void> disconnect() async => vkusvill.disconnect();
+  void addServer(String name, String url) {
+    servers.add(McpServer(name: name, url: url));
+    _saveServers();
+  }
+
+  Future<void> removeServer(int index) async {
+    if (index < 0 || index >= servers.length) return;
+    final server = servers[index];
+    if (server.isConnected) {
+      await server.disconnect();
+    }
+    servers.removeAt(index);
+    _saveServers();
+  }
+
+  Future<void> connectServer(int index) async {
+    if (index < 0 || index >= servers.length) return;
+    await servers[index].connect();
+  }
+
+  Future<void> disconnectServer(int index) async {
+    if (index < 0 || index >= servers.length) return;
+    await servers[index].disconnect();
+  }
 
   Future<String> callTool(
       String toolName, Map<String, dynamic> arguments) async {
-    if (!vkusvill.isConnected) {
-      return 'Error: VkusVill MCP server not connected';
+    for (final server in servers) {
+      if (!server.isConnected) continue;
+      final tool = server.tools.where((t) => t.name == toolName).firstOrNull;
+      if (tool != null) {
+        return server.callTool(toolName, arguments);
+      }
     }
-    return vkusvill.callTool(toolName, arguments);
+    return 'Error: No connected MCP server has tool "$toolName"';
+  }
+
+  void _loadServers() {
+    try {
+      final box = Hive.box('settings');
+      final json = box.get(_serversKey) as String?;
+      if (json == null) return;
+      final list = jsonDecode(json) as List<dynamic>;
+      for (final item in list) {
+        servers.add(McpServer.fromJson(item as Map<String, dynamic>));
+      }
+    } catch (_) {}
+  }
+
+  void _saveServers() {
+    try {
+      final box = Hive.box('settings');
+      box.put(_serversKey, jsonEncode(servers.map((s) => s.toJson()).toList()));
+    } catch (_) {}
   }
 
   void _loadDisabledTools() {
